@@ -1,0 +1,40 @@
+[
+  {
+    "id": "damas",
+    "title": "Damas",
+    "cover": "/cover-damas.png",
+    "boxColor": "#2a5a3b",
+    "box": {
+      "height": 1.2,
+      "depth": 0.22,
+      "orientation": "vertical",
+      "shelf": 0,
+      "shelfX": -1.4
+    }
+  },
+  {
+    "id": "xadrez",
+    "title": "Xadrez",
+    "cover": "/cover-xadrez.png",
+    "boxColor": "#3a2218",
+    "box": {
+      "height": 0.7,
+      "depth": 0.22,
+      "orientation": "horizontal",
+      "shelf": 0,
+      "shelfX": 1.4
+    }
+  },
+  {
+    "id": "adugo",
+    "title": "Adugo",
+    "cover": "/cover-adugo.jpg",
+    "boxColor": "#c49a6c"
+  },
+  {
+    "id": "surakarta",
+    "title": "Surakarta",
+    "cover": "/cover-surakarta.jpg",
+    "boxColor": "#f0c33c"
+  }
+]
