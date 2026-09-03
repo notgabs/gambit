@@ -152,7 +152,7 @@ export default function AdugoBoard() {
             <rect x="10" y="10" width="80" height="80" fill="none" stroke="#3a2218" strokeWidth="2.5" />
             
             {/* Sombreamento da Toca */}
-            <polygon points="10,90 90,90 50,130" fill="#3a2218" opacity="0.05" />
+            <polygon points="50,90 10,130 90,130" fill="#3a2218" opacity="0.05" />
           </svg>
 
           {COORDS.map((c, i) => {
