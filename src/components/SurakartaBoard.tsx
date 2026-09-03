@@ -13,7 +13,9 @@ import {
 import type { SurakartaState, SurakartaMove } from '@/types/surakarta';
 import { askSurakartaAI, resetSurakartaAI } from '@/lib/ai/askSurakartaAI';
 
-const JUMP_DURATION = 0.4;          // duração do salto final (s)
+const JUMP_DURATION = 0.38;         // duração do salto final (s)
+const IMPACT_RATIO = 0.6;           // % do salto em que ocorre o "impacto" (peça capturada some aqui)
+const JUMP_HEIGHT = 12;             // altura do arco do salto (reduzida — antes era 22)
 const SPEED_FACTOR = 0.012;         // segundos por "unidade de distância" no deslize
 const MIN_SLIDE_DURATION = 0.35;
 
@@ -55,9 +57,11 @@ export default function SurakartaBoard() {
 
   const [pendingMove, setPendingMove] = useState<SurakartaMove | null>(null);
   const [animPhase, setAnimPhase] = useState<'slide' | 'jump' | null>(null);
+  const [impacted, setImpacted] = useState(false); // true no exato instante do "toque" na peça capturada
 
   const slideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const impactTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gen = useRef(0);
 
   const isThinking = mode === 'ai' && state.turn === aiPlayer && state.winner === null;
@@ -85,8 +89,10 @@ export default function SurakartaBoard() {
   const clearAnimTimers = () => {
     if (slideTimeoutRef.current) clearTimeout(slideTimeoutRef.current);
     if (jumpTimeoutRef.current) clearTimeout(jumpTimeoutRef.current);
+    if (impactTimeoutRef.current) clearTimeout(impactTimeoutRef.current);
     slideTimeoutRef.current = null;
     jumpTimeoutRef.current = null;
+    impactTimeoutRef.current = null;
   };
 
   const restart = () => {
@@ -97,6 +103,7 @@ export default function SurakartaBoard() {
     setSelected(null);
     setPendingMove(null);
     setAnimPhase(null);
+    setImpacted(false);
   };
 
   const legalMoves = useMemo(() => generateLegalMoves(state), [state]);
@@ -130,6 +137,7 @@ export default function SurakartaBoard() {
   const runCapture = (move: SurakartaMove) => {
     setSelected(null);
     setPendingMove(move);
+    setImpacted(false);
 
     const points = move.slidePoints ?? [];
     const distance = computeTotalDistance(points);
@@ -139,6 +147,14 @@ export default function SurakartaBoard() {
       setState(s => applyMove(s, move));
       setPendingMove(null);
       setAnimPhase(null);
+      setImpacted(false);
+    };
+
+    const runJump = () => {
+      setAnimPhase('jump');
+      // A peça capturada só "some" no instante do impacto (não no início do salto)
+      impactTimeoutRef.current = setTimeout(() => setImpacted(true), JUMP_DURATION * IMPACT_RATIO * 1000);
+      jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
     };
 
     const hasSlide = points.length > 1;
@@ -146,17 +162,18 @@ export default function SurakartaBoard() {
     if (move.hasFinalHop) {
       if (hasSlide) {
         setAnimPhase('slide');
-        slideTimeoutRef.current = setTimeout(() => {
-          setAnimPhase('jump');
-          jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
-        }, slideDuration * 1000);
+        slideTimeoutRef.current = setTimeout(runJump, slideDuration * 1000);
       } else {
-        setAnimPhase('jump');
-        jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
+        runJump();
       }
     } else {
+      // Captura termina saindo de um loop: desliza suavemente até o fim,
+      // sem salto (a peça capturada some ao chegar, não antes)
       setAnimPhase('slide');
-      slideTimeoutRef.current = setTimeout(finish, slideDuration * 1000);
+      slideTimeoutRef.current = setTimeout(() => {
+        setImpacted(true);
+        setTimeout(finish, 80);
+      }, slideDuration * 1000);
     }
   };
 
@@ -238,7 +255,7 @@ export default function SurakartaBoard() {
             ))}
           </svg>
 
-          {/* Fase 1: deslize pelos trilhos/loops (Framer Motion, sem SMIL) */}
+          {/* Fase 1: deslize pelos trilhos/loops */}
           {pendingMove && animPhase === 'slide' && slideInfo && (
             <motion.div
               key={`slide-${pendingMove.fromX}-${pendingMove.fromY}-${pendingMove.toX}-${pendingMove.toY}-${state.history.length}`}
@@ -260,7 +277,7 @@ export default function SurakartaBoard() {
             />
           )}
 
-          {/* Fase 2: salto final da captura */}
+          {/* Fase 2: salto final — a peça avança exatamente 1 casa e "pousa" sobre o alvo */}
           {pendingMove && animPhase === 'jump' && (
             <motion.div
               className="absolute z-30 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
@@ -277,20 +294,41 @@ export default function SurakartaBoard() {
               <motion.div
                 className="h-7 w-7 md:h-8 md:w-8 rounded-full border-[3px] border-[#3a2218] shadow-md"
                 style={{ backgroundColor: movingColor }}
-                animate={{ y: [0, -22, 0], scale: [1, 1.2, 1] }}
+                animate={{ y: [0, -JUMP_HEIGHT, 0], scale: [1, 1.1, 1] }}
                 transition={{ duration: JUMP_DURATION, ease: 'easeOut' }}
               />
             </motion.div>
           )}
+
+          {/* Efeito de "impacto" no instante em que a peça é capturada */}
+          <AnimatePresence>
+            {pendingMove && impacted && animPhase !== null && (
+              <motion.div
+                key="impact-fx"
+                className="absolute z-25 -translate-x-1/2 -translate-y-1/2 pointer-events-none rounded-full border-4 border-rose-500"
+                style={{
+                  left: `${BOARD_POINTS[pendingMove.toX]}%`,
+                  top: `${BOARD_POINTS[pendingMove.toY]}%`,
+                }}
+                initial={{ width: 10, height: 10, opacity: 0.9 }}
+                animate={{ width: 44, height: 44, opacity: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+              />
+            )}
+          </AnimatePresence>
 
           {Array.from({ length: 6 }).map((_, y) =>
             Array.from({ length: 6 }).map((_, x) => {
               const piece = state.board[y][x];
               const isSelected = selected?.x === x && selected?.y === y;
 
+              // A peça de origem some assim que a animação começa.
+              // A peça capturada (destino) só some no instante do impacto (`impacted`),
+              // nunca antes — é isso que corrige a sensação de "pulo de dama".
               const isHidden = !!pendingMove && (
                 (pendingMove.fromX === x && pendingMove.fromY === y) ||
-                (animPhase === 'jump' && pendingMove.toX === x && pendingMove.toY === y)
+                (impacted && pendingMove.toX === x && pendingMove.toY === y)
               );
 
               const destMove = destinations.get(`${x},${y}`);
