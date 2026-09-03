@@ -153,8 +153,6 @@ export default function AdugoBoard() {
             
             {/* Sombreamento da Toca */}
             <polygon points="10,90 90,90 50,130" fill="#3a2218" opacity="0.05" />
-            <text x="25" y="103" fill="#3a2218" opacity="0.6" fontSize="5" fontWeight="bold" transform="rotate(-45 25 103)">Adugo</text>
-            <text x="75" y="103" fill="#3a2218" opacity="0.6" fontSize="5" fontWeight="bold" transform="rotate(45 75 103)">Toca</text>
           </svg>
 
           {COORDS.map((c, i) => {
@@ -165,24 +163,18 @@ export default function AdugoBoard() {
             const isCapture = destMove?.capture !== undefined;
             const canSelect = piece === state.turn && movable.has(i);
 
-            // Se for cão no turno da matilha, e estiver sendo ameaçado
-            let isVulnerable = false;
-            if (piece === -1 && state.turn === -1 && !isThinking) {
-               // Uma avaliação visual rápida (opcional): se a onça puder comer esse cão no próximo lance, avisar.
-            }
-
             return (
               <button
                 key={i}
                 type="button"
                 onClick={() => onNodeClick(i)}
-                className="absolute flex items-center justify-center outline-none -translate-x-1/2 -translate-y-1/2"
-                style={{ left: `${c.x}%`, top: `${(c.y / 140) * 100}%`, width: '10%', height: '7%' }}
+                className="absolute flex h-9 w-9 md:h-11 md:w-11 items-center justify-center outline-none -translate-x-1/2 -translate-y-1/2"
+                style={{ left: `${c.x}%`, top: `${(c.y / 140) * 100}%` }}
               >
-                <span className="absolute z-0 h-[20%] w-[20%] min-w-[8px] min-h-[8px] rounded-full border-[1.5px] border-[#3a2218] bg-[#b0b0b0]" />
+                <span className="absolute z-0 h-2.5 w-2.5 rounded-full border-2 border-[#3a2218] bg-[#b0b0b0]" />
 
                 {isDest && (
-                  <span className={`absolute z-10 h-[60%] w-[80%] rounded-full animate-pulse border-2 ${isCapture ? 'border-rose-500 bg-rose-500/30' : 'border-emerald-600 bg-emerald-500/20'}`} />
+                  <span className={`absolute z-10 h-7 w-7 animate-pulse rounded-full border-[3px] ${isCapture ? 'border-rose-500 bg-rose-500/30' : 'border-emerald-600 bg-emerald-500/20'}`} />
                 )}
 
                 <AnimatePresence>
@@ -194,7 +186,7 @@ export default function AdugoBoard() {
                       animate={{ scale: isSelected ? 1.15 : 1, opacity: 1 }}
                       exit={{ scale: 0.15, opacity: 0 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                      className={`absolute z-20 h-[70%] w-[90%] min-w-[24px] min-h-[24px] max-w-[44px] max-h-[44px] rounded-full border-[3px] border-[#3a2218] shadow-sm ${
+                      className={`absolute z-20 h-7 w-7 md:h-8 md:w-8 rounded-full border-[3px] border-[#3a2218] shadow-sm ${
                         piece === 1 ? 'bg-[#f0c33c]' : 'bg-[#7d7d7d]'
                       } ${isSelected ? 'ring-4 ring-amber-400' : ''} ${
                         canSelect && selected === null ? 'ring-2 ring-[#3a2218]/30 ring-offset-2' : ''
