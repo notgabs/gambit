@@ -23,6 +23,12 @@ const GAMES = [
     cover: '/cover-adugo.jpg',
     className: 'aspect-square w-[260px] md:w-[320px]',
   },
+  {
+    id: 'surakarta',
+    title: 'Surakarta',
+    cover: '/cover-surakarta.jpg', // Placeholder for surakarta cover art, will show a broken image if missing but user can fix
+    className: 'aspect-video w-[320px] md:w-[480px]',
+  }
 ];
 
 export default function VintageLobby() {
