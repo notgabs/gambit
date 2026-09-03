@@ -19,21 +19,12 @@ export function newSurakartaGame(): SurakartaState {
   };
 }
 
-/**
- * Geometria do tabuleiro:
- * - MARGIN: distância da borda do SVG (0-100) até a primeira linha da grade.
- * - STEP: espaçamento entre linhas/colunas.
- *
- * Regra para os loops NUNCA cortarem no canto: MARGIN >= 2 * STEP
- * (o loop grande tem raio 2*STEP e fica centrado exatamente no canto).
- * 25 >= 2*10 = 20 ✅ (com folga de 5 unidades).
- */
 const MARGIN = 25;
 const STEP = 10;
 
 export const BOARD_POINTS = [0, 1, 2, 3, 4, 5].map(i => MARGIN + i * STEP); // [25,35,45,55,65,75]
-export const LOOP_RADIUS_SMALL = STEP;       // 10
-export const LOOP_RADIUS_LARGE = STEP * 2;   // 20
+export const LOOP_RADIUS_SMALL = STEP;
+export const LOOP_RADIUS_LARGE = STEP * 2;
 
 const ARC_SAMPLE_STEPS = 10;
 
@@ -42,11 +33,6 @@ interface ArcInfo {
   sample: (steps: number) => { x: number; y: number }[];
 }
 
-/**
- * Calcula o arco "longo" (270°) entre dois pontos de um círculo já
- * conhecido (centro + raio), retornando o comando SVG e uma função
- * de amostragem de pontos intermediários (usada na animação).
- */
 function computeArc(cx: number, cy: number, r: number, x0: number, y0: number, x1: number, y1: number): ArcInfo {
   const TWO_PI = Math.PI * 2;
   let a0 = Math.atan2(y0 - cy, x0 - cx);
@@ -57,7 +43,6 @@ function computeArc(cx: number, cy: number, r: number, x0: number, y0: number, x
   let diff = a1 - a0;
   while (diff > Math.PI) diff -= TWO_PI;
   while (diff <= -Math.PI) diff += TWO_PI;
-  // Sempre queremos o caminho LONGO (>180°), não o curto
   const longDiff = diff > 0 ? diff - TWO_PI : diff + TWO_PI;
   const sweepFlag = longDiff > 0 ? 1 : 0;
 
@@ -100,25 +85,21 @@ function buildLoopMap(): Record<string, RayTransition> {
   const S = LOOP_RADIUS_SMALL;
   const L = LOOP_RADIUS_LARGE;
 
-  // Canto Superior-Esquerdo (centro em P[0],P[0])
   pair("0,1,-1,0", { x: 1, y: 0, dx: 0, dy: 1 }, "1,0,0,-1", { x: 0, y: 1, dx: 1, dy: 0 },
     P[0], P[0], S, P[0], P[1], P[1], P[0]);
   pair("0,2,-1,0", { x: 2, y: 0, dx: 0, dy: 1 }, "2,0,0,-1", { x: 0, y: 2, dx: 1, dy: 0 },
     P[0], P[0], L, P[0], P[2], P[2], P[0]);
 
-  // Canto Superior-Direito (centro em P[5],P[0])
   pair("5,1,1,0", { x: 4, y: 0, dx: 0, dy: 1 }, "4,0,0,-1", { x: 5, y: 1, dx: -1, dy: 0 },
     P[5], P[0], S, P[5], P[1], P[4], P[0]);
   pair("5,2,1,0", { x: 3, y: 0, dx: 0, dy: 1 }, "3,0,0,-1", { x: 5, y: 2, dx: -1, dy: 0 },
     P[5], P[0], L, P[5], P[2], P[3], P[0]);
 
-  // Canto Inferior-Esquerdo (centro em P[0],P[5])
   pair("0,4,-1,0", { x: 1, y: 5, dx: 0, dy: -1 }, "1,5,0,1", { x: 0, y: 4, dx: 1, dy: 0 },
     P[0], P[5], S, P[0], P[4], P[1], P[5]);
   pair("0,3,-1,0", { x: 2, y: 5, dx: 0, dy: -1 }, "2,5,0,1", { x: 0, y: 3, dx: 1, dy: 0 },
     P[0], P[5], L, P[0], P[3], P[2], P[5]);
 
-  // Canto Inferior-Direito (centro em P[5],P[5])
   pair("5,4,1,0", { x: 4, y: 5, dx: 0, dy: -1 }, "4,5,0,1", { x: 5, y: 4, dx: -1, dy: 0 },
     P[5], P[5], S, P[5], P[4], P[4], P[5]);
   pair("5,3,1,0", { x: 3, y: 5, dx: 0, dy: -1 }, "3,5,0,1", { x: 5, y: 3, dx: -1, dy: 0 },
@@ -147,12 +128,6 @@ function getNextRayState(x: number, y: number, dx: number, dy: number): NextRayR
   return null;
 }
 
-/**
- * Retorna os 8 loops decorativos prontos (path SVG completo),
- * usados pelo componente para desenhar o fundo do tabuleiro.
- * Única fonte de verdade — garante que o desenho visual sempre
- * bata exatamente com a geometria usada na lógica do jogo.
- */
 export interface DecorativeLoop {
   path: string;
   size: 'small' | 'large';
@@ -189,7 +164,7 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
     for (let x = 0; x < 6; x++) {
       if (board[y][x] !== turn) continue;
 
-      // 1. Movimentos Normais
+      // 1. Movimentos Normais — 1 casa, 8 direções, só se vazia
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -197,13 +172,13 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
           const ny = y + dy;
           if (nx >= 0 && nx <= 5 && ny >= 0 && ny <= 5) {
             if (board[ny][nx] === 0) {
-              moves.push({ fromX: x, fromY: y, toX: nx, toY: ny, isCapture: false });
+              moves.push({ fromX: x, fromY: y, toX: nx, toY: ny, isCapture: false, hopPoints: [] });
             }
           }
         }
       }
 
-      // 2. Movimentos de Captura
+      // 2. Movimentos de Captura (estilo dama: salta a peça capturada e pousa 1 casa depois)
       const orthogonalDirs = [ [0,-1], [0,1], [-1,0], [1,0] ];
       for (const [startDx, startDy] of orthogonalDirs) {
         let currX = x;
@@ -213,25 +188,18 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
         let loopsTraversed = 0;
         let steps = 0;
 
-        // Pontos reais (%) do trajeto, começando na posição de origem
         const points: { x: number; y: number }[] = [{ x: P[x], y: P[y] }];
-        let lastStepWasArc = false;
-        let lastStepFromGrid = { x, y };
 
         while (steps < 50) {
           const next = getNextRayState(currX, currY, dx, dy);
           if (!next) break;
 
           const isLoop = (next.x !== currX + dx) || (next.y !== currY + dy);
-          lastStepFromGrid = { x: currX, y: currY };
-
           if (isLoop && next.arcSample) {
             loopsTraversed++;
             points.push(...next.arcSample(ARC_SAMPLE_STEPS));
-            lastStepWasArc = true;
           } else {
             points.push({ x: P[next.x], y: P[next.y] });
-            lastStepWasArc = false;
           }
 
           currX = next.x;
@@ -242,31 +210,40 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
 
           if (board[currY][currX] !== 0) {
             if (board[currY][currX] !== turn && loopsTraversed > 0) {
-              let slidePoints = points;
-              const hasFinalHop = !lastStepWasArc;
-              let preCaptureX = currX;
-              let preCaptureY = currY;
+              // Tenta "pousar" 1 casa depois da peça capturada, na direção atual.
+              const landing = getNextRayState(currX, currY, dx, dy);
 
-              if (hasFinalHop) {
-                // Remove o ponto final (reto) do deslize — ele vira o "salto"
-                slidePoints = points.slice(0, -1);
-                preCaptureX = lastStepFromGrid.x;
-                preCaptureY = lastStepFromGrid.y;
+              if (landing && board[landing.y][landing.x] === 0) {
+                const railPoints = points.slice(0, -1); // tudo antes da peça capturada
+                const capturedPointPct = points[points.length - 1];
+
+                const hopPoints: { x: number; y: number }[] = [
+                  railPoints.length > 0 ? railPoints[railPoints.length - 1] : { x: P[x], y: P[y] },
+                  capturedPointPct,
+                ];
+
+                const landingIsLoop = (landing.x !== currX + dx) || (landing.y !== currY + dy);
+                if (landingIsLoop && landing.arcSample) {
+                  hopPoints.push(...landing.arcSample(ARC_SAMPLE_STEPS));
+                } else {
+                  hopPoints.push({ x: P[landing.x], y: P[landing.y] });
+                }
+
+                moves.push({
+                  fromX: x,
+                  fromY: y,
+                  toX: landing.x,
+                  toY: landing.y,
+                  isCapture: true,
+                  slidePoints: railPoints.length > 1 ? railPoints : undefined,
+                  capturedX: currX,
+                  capturedY: currY,
+                  hopPoints,
+                });
               }
-
-              moves.push({
-                fromX: x,
-                fromY: y,
-                toX: currX,
-                toY: currY,
-                isCapture: true,
-                slidePoints,
-                hasFinalHop,
-                preCaptureX,
-                preCaptureY,
-              });
+              // Se não achou pouso válido (sem rio ou casa ocupada), a jogada simplesmente não é gerada.
             }
-            break;
+            break; // trilha bloqueada por essa peça de qualquer forma
           }
         }
       }
@@ -278,6 +255,12 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
 
 export function applyMove(state: SurakartaState, move: SurakartaMove): SurakartaState {
   const board = state.board.map(row => [...row]);
+
+  // ⚠️ Importante: agora 'to' NÃO é mais a casa da peça capturada,
+  // então ela precisa ser removida explicitamente daqui.
+  if (move.isCapture && move.capturedX !== undefined && move.capturedY !== undefined) {
+    board[move.capturedY][move.capturedX] = 0;
+  }
 
   board[move.toY][move.toX] = board[move.fromY][move.fromX];
   board[move.fromY][move.fromX] = 0;
@@ -316,7 +299,6 @@ export function applyMove(state: SurakartaState, move: SurakartaMove): Surakarta
   if (newState.winner === null) {
     const nextMoves = generateLegalMoves(newState);
     if (nextMoves.length === 0) {
-      // Se o próximo jogador não tem movimentos, ele perde.
       newState.winner = nextTurn === 1 ? -1 : 1;
     }
   }

@@ -7,13 +7,19 @@ export interface SurakartaMove {
   toY: number;
   isCapture: boolean;
 
-  /** Pontos (em % da viewBox 0-100) do trajeto de deslize, incluindo os arcos dos loops já amostrados em pequenos passos. */
+  /** Pontos (% da viewBox) do trajeto de deslize ATÉ a casa anterior à peça capturada. Ausente se não há rail antes do salto. */
   slidePoints?: { x: number; y: number }[];
-  /** Se true, o último trecho é reto e vira um "salto" estilizado em vez de deslize. */
-  hasFinalHop?: boolean;
-  /** Casa de grade (índices 0-5) de onde parte o salto final. */
-  preCaptureX?: number;
-  preCaptureY?: number;
+
+  /** Coordenadas de grade (0-5) da peça que será removida do tabuleiro. */
+  capturedX?: number;
+  capturedY?: number;
+
+  /**
+   * Pontos (% da viewBox) do "salto": da casa anterior à peça capturada,
+   * passando por cima dela, até a casa de pouso (toX/toY).
+   * Se o pouso ocorrer atravessando um loop, inclui os pontos do arco.
+   */
+  hopPoints: { x: number; y: number }[];
 }
 
 export interface SurakartaState {

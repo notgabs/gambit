@@ -13,11 +13,12 @@ import {
 import type { SurakartaState, SurakartaMove } from '@/types/surakarta';
 import { askSurakartaAI, resetSurakartaAI } from '@/lib/ai/askSurakartaAI';
 
-const JUMP_DURATION = 0.38;         // duração do salto final (s)
-const IMPACT_RATIO = 0.6;           // % do salto em que ocorre o "impacto" (peça capturada some aqui)
-const JUMP_HEIGHT = 12;             // altura do arco do salto (reduzida — antes era 22)
-const SPEED_FACTOR = 0.012;         // segundos por "unidade de distância" no deslize
+const SLIDE_SPEED_FACTOR = 0.012;
 const MIN_SLIDE_DURATION = 0.35;
+
+const HOP_SPEED_FACTOR = 0.013;
+const MIN_HOP_DURATION = 0.38;
+const JUMP_HEIGHT = 15;
 
 function computeTimes(points: { x: number; y: number }[]): number[] {
   if (points.length <= 1) return [0, 1];
@@ -57,7 +58,7 @@ export default function SurakartaBoard() {
 
   const [pendingMove, setPendingMove] = useState<SurakartaMove | null>(null);
   const [animPhase, setAnimPhase] = useState<'slide' | 'jump' | null>(null);
-  const [impacted, setImpacted] = useState(false); // true no exato instante do "toque" na peça capturada
+  const [impacted, setImpacted] = useState(false);
 
   const slideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,6 +120,17 @@ export default function SurakartaBoard() {
     return map;
   }, [selected, legalMoves]);
 
+  // Casas com peças inimigas que seriam capturadas pelos movimentos atualmente destacados
+  const capturedTargets = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of destinations.values()) {
+      if (m.isCapture && m.capturedX !== undefined && m.capturedY !== undefined) {
+        s.add(`${m.capturedX},${m.capturedY}`);
+      }
+    }
+    return s;
+  }, [destinations]);
+
   const movable = useMemo(() => {
     const s = new Set<string>();
     for (const m of legalMoves) s.add(`${m.fromX},${m.fromY}`);
@@ -129,9 +141,21 @@ export default function SurakartaBoard() {
     if (!pendingMove?.slidePoints || pendingMove.slidePoints.length === 0) return null;
     const points = pendingMove.slidePoints;
     const distance = computeTotalDistance(points);
-    const duration = Math.max(MIN_SLIDE_DURATION, distance * SPEED_FACTOR);
+    const duration = Math.max(MIN_SLIDE_DURATION, distance * SLIDE_SPEED_FACTOR);
     const times = computeTimes(points);
     return { points, duration, times };
+  }, [pendingMove]);
+
+  const hopInfo = useMemo(() => {
+    if (!pendingMove?.hopPoints || pendingMove.hopPoints.length < 2) return null;
+    const points = pendingMove.hopPoints;
+    const distance = computeTotalDistance(points);
+    const duration = Math.max(MIN_HOP_DURATION, distance * HOP_SPEED_FACTOR);
+    const times = computeTimes(points);
+    // Momento (0-1) em que a trajetória passa exatamente sobre a peça capturada (índice 1)
+    const impactRatio = times[1] ?? 0.5;
+    const yOffsets = times.map(t => -JUMP_HEIGHT * Math.sin(Math.PI * t));
+    return { points, duration, times, impactRatio, yOffsets };
   }, [pendingMove]);
 
   const runCapture = (move: SurakartaMove) => {
@@ -139,9 +163,10 @@ export default function SurakartaBoard() {
     setPendingMove(move);
     setImpacted(false);
 
-    const points = move.slidePoints ?? [];
-    const distance = computeTotalDistance(points);
-    const slideDuration = Math.max(MIN_SLIDE_DURATION, distance * SPEED_FACTOR);
+    const hopDistance = computeTotalDistance(move.hopPoints || []);
+    const hopDuration = Math.max(MIN_HOP_DURATION, hopDistance * HOP_SPEED_FACTOR);
+    const hopTimes = computeTimes(move.hopPoints || []);
+    const impactRatio = hopTimes[1] ?? 0.5;
 
     const finish = () => {
       setState(s => applyMove(s, move));
@@ -150,30 +175,19 @@ export default function SurakartaBoard() {
       setImpacted(false);
     };
 
-    const runJump = () => {
+    const runHop = () => {
       setAnimPhase('jump');
-      // A peça capturada só "some" no instante do impacto (não no início do salto)
-      impactTimeoutRef.current = setTimeout(() => setImpacted(true), JUMP_DURATION * IMPACT_RATIO * 1000);
-      jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
+      impactTimeoutRef.current = setTimeout(() => setImpacted(true), hopDuration * impactRatio * 1000);
+      jumpTimeoutRef.current = setTimeout(finish, hopDuration * 1000);
     };
 
-    const hasSlide = points.length > 1;
-
-    if (move.hasFinalHop) {
-      if (hasSlide) {
-        setAnimPhase('slide');
-        slideTimeoutRef.current = setTimeout(runJump, slideDuration * 1000);
-      } else {
-        runJump();
-      }
-    } else {
-      // Captura termina saindo de um loop: desliza suavemente até o fim,
-      // sem salto (a peça capturada some ao chegar, não antes)
+    if (move.slidePoints && move.slidePoints.length > 1) {
+      const slideDistance = computeTotalDistance(move.slidePoints);
+      const slideDuration = Math.max(MIN_SLIDE_DURATION, slideDistance * SLIDE_SPEED_FACTOR);
       setAnimPhase('slide');
-      slideTimeoutRef.current = setTimeout(() => {
-        setImpacted(true);
-        setTimeout(finish, 80);
-      }, slideDuration * 1000);
+      slideTimeoutRef.current = setTimeout(runHop, slideDuration * 1000);
+    } else {
+      runHop();
     }
   };
 
@@ -255,60 +269,52 @@ export default function SurakartaBoard() {
             ))}
           </svg>
 
-          {/* Fase 1: deslize pelos trilhos/loops */}
+          {/* Fase 1: deslize pelos trilhos/loops até a casa anterior à peça capturada */}
           {pendingMove && animPhase === 'slide' && slideInfo && (
             <motion.div
               key={`slide-${pendingMove.fromX}-${pendingMove.fromY}-${pendingMove.toX}-${pendingMove.toY}-${state.history.length}`}
               className="absolute z-30 h-7 w-7 md:h-8 md:w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-[#3a2218] shadow-md pointer-events-none"
               style={{ backgroundColor: movingColor }}
-              initial={{
-                left: `${slideInfo.points[0].x}%`,
-                top: `${slideInfo.points[0].y}%`,
-              }}
+              initial={{ left: `${slideInfo.points[0].x}%`, top: `${slideInfo.points[0].y}%` }}
               animate={{
                 left: slideInfo.points.map(p => `${p.x}%`),
                 top: slideInfo.points.map(p => `${p.y}%`),
               }}
-              transition={{
-                duration: slideInfo.duration,
-                times: slideInfo.times,
-                ease: 'linear',
-              }}
+              transition={{ duration: slideInfo.duration, times: slideInfo.times, ease: 'linear' }}
             />
           )}
 
-          {/* Fase 2: salto final — a peça avança exatamente 1 casa e "pousa" sobre o alvo */}
-          {pendingMove && animPhase === 'jump' && (
+          {/* Fase 2: salto — passa por cima da peça capturada e pousa na casa seguinte */}
+          {pendingMove && animPhase === 'jump' && hopInfo && (
             <motion.div
+              key={`hop-${pendingMove.fromX}-${pendingMove.fromY}-${pendingMove.toX}-${pendingMove.toY}-${state.history.length}`}
               className="absolute z-30 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-              initial={{
-                left: `${BOARD_POINTS[pendingMove.preCaptureX ?? pendingMove.fromX]}%`,
-                top: `${BOARD_POINTS[pendingMove.preCaptureY ?? pendingMove.fromY]}%`,
-              }}
+              initial={{ left: `${hopInfo.points[0].x}%`, top: `${hopInfo.points[0].y}%` }}
               animate={{
-                left: `${BOARD_POINTS[pendingMove.toX]}%`,
-                top: `${BOARD_POINTS[pendingMove.toY]}%`,
+                left: hopInfo.points.map(p => `${p.x}%`),
+                top: hopInfo.points.map(p => `${p.y}%`),
               }}
-              transition={{ duration: JUMP_DURATION, ease: 'easeInOut' }}
+              transition={{ duration: hopInfo.duration, times: hopInfo.times, ease: 'linear' }}
             >
               <motion.div
                 className="h-7 w-7 md:h-8 md:w-8 rounded-full border-[3px] border-[#3a2218] shadow-md"
                 style={{ backgroundColor: movingColor }}
-                animate={{ y: [0, -JUMP_HEIGHT, 0], scale: [1, 1.1, 1] }}
-                transition={{ duration: JUMP_DURATION, ease: 'easeOut' }}
+                initial={{ y: hopInfo.yOffsets[0], scale: 1 }}
+                animate={{ y: hopInfo.yOffsets, scale: [1, 1.15, 1] }}
+                transition={{ duration: hopInfo.duration, times: hopInfo.times, ease: 'linear' }}
               />
             </motion.div>
           )}
 
-          {/* Efeito de "impacto" no instante em que a peça é capturada */}
+          {/* Efeito de impacto no instante em que a peça é capturada */}
           <AnimatePresence>
-            {pendingMove && impacted && animPhase !== null && (
+            {pendingMove && impacted && animPhase !== null && pendingMove.capturedX !== undefined && (
               <motion.div
                 key="impact-fx"
                 className="absolute z-25 -translate-x-1/2 -translate-y-1/2 pointer-events-none rounded-full border-4 border-rose-500"
                 style={{
-                  left: `${BOARD_POINTS[pendingMove.toX]}%`,
-                  top: `${BOARD_POINTS[pendingMove.toY]}%`,
+                  left: `${BOARD_POINTS[pendingMove.capturedX]}%`,
+                  top: `${BOARD_POINTS[pendingMove.capturedY!]}%`,
                 }}
                 initial={{ width: 10, height: 10, opacity: 0.9 }}
                 animate={{ width: 44, height: 44, opacity: 0 }}
@@ -323,17 +329,15 @@ export default function SurakartaBoard() {
               const piece = state.board[y][x];
               const isSelected = selected?.x === x && selected?.y === y;
 
-              // A peça de origem some assim que a animação começa.
-              // A peça capturada (destino) só some no instante do impacto (`impacted`),
-              // nunca antes — é isso que corrige a sensação de "pulo de dama".
               const isHidden = !!pendingMove && (
                 (pendingMove.fromX === x && pendingMove.fromY === y) ||
-                (impacted && pendingMove.toX === x && pendingMove.toY === y)
+                (impacted && pendingMove.capturedX === x && pendingMove.capturedY === y)
               );
 
               const destMove = destinations.get(`${x},${y}`);
               const isDest = destMove !== undefined;
               const isCapture = destMove?.isCapture;
+              const isCaptureTarget = capturedTargets.has(`${x},${y}`);
               const canSelect = piece === state.turn && movable.has(`${x},${y}`);
 
               return (
@@ -348,6 +352,11 @@ export default function SurakartaBoard() {
 
                   {isDest && (
                     <span className={`absolute z-10 h-10 w-10 md:h-12 md:w-12 animate-pulse rounded-full border-[4px] ${isCapture ? 'border-rose-500 bg-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.6)]' : 'border-emerald-600 bg-emerald-500/20'}`} />
+                  )}
+
+                  {/* Destaca a peça inimiga que seria capturada (casa diferente do destino agora) */}
+                  {isCaptureTarget && !isDest && (
+                    <span className="absolute z-10 h-10 w-10 md:h-12 md:w-12 animate-pulse rounded-full border-[4px] border-rose-500/80" />
                   )}
 
                   <AnimatePresence>
