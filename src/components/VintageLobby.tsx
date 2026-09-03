@@ -26,8 +26,8 @@ const GAMES = [
   {
     id: 'surakarta',
     title: 'Surakarta',
-    cover: '/cover-surakarta.jpg', // Placeholder for surakarta cover art, will show a broken image if missing but user can fix
-    className: 'aspect-video w-[320px] md:w-[480px]',
+    cover: '/cover-surakarta.jpg',
+    className: 'aspect-[3/4] w-[220px] md:w-[320px]',
   }
 ];
 
