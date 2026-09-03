@@ -140,11 +140,6 @@ export default function AdugoBoard() {
               ))}
             </div>
           </div>
-          <div className="flex gap-2">
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#3a2218]/60">
-              Passos: {state.pliesWithoutCapture}/60
-            </span>
-          </div>
         </div>
 
         <button onClick={restart} className="flex items-center justify-center rounded-xl border-4 border-[#3a2218] bg-[#c49a6c] px-3 py-1.5 text-[#3a2218] shadow-[3px_3px_0_#3a2218] hover:-translate-y-0.5 transition-all outline-none">

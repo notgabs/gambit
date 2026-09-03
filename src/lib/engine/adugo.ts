@@ -96,7 +96,8 @@ export function newAdugoGame(): AdugoState {
     dogsCaptured: 0,
     legalMoves: [],
     history: [board.join('')],
-    rules: { maxCapturesToWin: 5, drawAfterRepetitions: 3, drawAfterPliesWithoutCapture: 60 },
+    // Empate completamente desabilitado (9999 lances)
+    rules: { maxCapturesToWin: 5, drawAfterRepetitions: 9999, drawAfterPliesWithoutCapture: 99999 },
     pliesPlayed: 0,
     pliesWithoutCapture: 0,
   };
