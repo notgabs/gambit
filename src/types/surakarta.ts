@@ -6,6 +6,7 @@ export interface SurakartaMove {
   toX: number;
   toY: number;
   isCapture: boolean;
+  path?: string;
 }
 
 export interface SurakartaState {

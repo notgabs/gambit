@@ -8,10 +8,12 @@ import type { SurakartaState, SurakartaMove } from '@/types/surakarta';
 export default function SurakartaBoard() {
   const [state, setState] = useState<SurakartaState>(() => newSurakartaGame());
   const [selected, setSelected] = useState<{ x: number, y: number } | null>(null);
+  const [animatingCapture, setAnimatingCapture] = useState<SurakartaMove | null>(null);
 
   const restart = () => {
     setState(newSurakartaGame());
     setSelected(null);
+    setAnimatingCapture(null);
   };
 
   const legalMoves = useMemo(() => generateLegalMoves(state), [state]);
@@ -34,13 +36,22 @@ export default function SurakartaBoard() {
   }, [legalMoves]);
 
   const onNodeClick = (x: number, y: number) => {
-    if (state.winner !== null) return;
+    if (state.winner !== null || animatingCapture) return;
 
     const destKey = `${x},${y}`;
     if (selected !== null && destinations.has(destKey)) {
       const move = destinations.get(destKey)!;
-      setState(s => applyMove(s, move));
-      setSelected(null);
+      if (move.isCapture && move.path) {
+        setAnimatingCapture(move);
+        setSelected(null);
+        setTimeout(() => {
+          setState(s => applyMove(s, move));
+          setAnimatingCapture(null);
+        }, 1500);
+      } else {
+        setState(s => applyMove(s, move));
+        setSelected(null);
+      }
       return;
     }
 
@@ -52,7 +63,7 @@ export default function SurakartaBoard() {
   };
 
   // Coordenadas SVG
-  const P = [15, 29, 43, 57, 71, 85]; // 6 grid lines
+  const P = [15, 29, 43, 57, 71, 85];
 
   return (
     <div className="flex flex-col items-center justify-between h-[100dvh] w-screen bg-[#e8dcc4] p-3 md:p-6 overflow-hidden relative font-sans select-none">
@@ -100,6 +111,18 @@ export default function SurakartaBoard() {
 
             <path d="M 85 71 A 14 14 0 1 1 71 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BR Outer */}
             <path d="M 85 57 A 28 28 0 1 1 57 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BR Inner */}
+
+            {/* Peça Animada na Captura */}
+            {animatingCapture && animatingCapture.path && (
+              <g>
+                <path id="capturePath" d={animatingCapture.path} fill="none" stroke="transparent" />
+                <circle r="4" fill={state.turn === 1 ? '#3a2218' : '#e8dcc4'} stroke="#3a2218" strokeWidth="0.8">
+                  <animateMotion dur="1.5s" repeatCount="1" fill="freeze" calcMode="linear">
+                    <mpath href="#capturePath" />
+                  </animateMotion>
+                </circle>
+              </g>
+            )}
           </svg>
 
           {/* Nós e Peças */}
@@ -107,6 +130,7 @@ export default function SurakartaBoard() {
             Array.from({ length: 6 }).map((_, x) => {
               const piece = state.board[y][x];
               const isSelected = selected?.x === x && selected?.y === y;
+              const isHidden = animatingCapture && animatingCapture.fromX === x && animatingCapture.fromY === y;
               const destMove = destinations.get(`${x},${y}`);
               const isDest = destMove !== undefined;
               const isCapture = destMove?.isCapture;
@@ -127,7 +151,7 @@ export default function SurakartaBoard() {
                   )}
 
                   <AnimatePresence>
-                    {piece !== 0 && (
+                    {piece !== 0 && !isHidden && (
                       <motion.span
                         key={`piece-${x}-${y}`}
                         initial={{ scale: 0.7, opacity: 0 }}
