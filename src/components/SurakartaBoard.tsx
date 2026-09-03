@@ -92,11 +92,11 @@ export default function SurakartaBoard() {
             <path d="M 15 29 A 14 14 0 1 1 29 15" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TL Outer */}
             <path d="M 15 43 A 28 28 0 1 1 43 15" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TL Inner */}
             
-            <path d="M 85 29 A 14 14 0 1 0 71 15" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TR Outer */}
-            <path d="M 85 43 A 28 28 0 1 0 57 15" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TR Inner */}
+            <path d="M 71 15 A 14 14 0 1 1 85 29" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TR Outer */}
+            <path d="M 57 15 A 28 28 0 1 1 85 43" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TR Inner */}
 
-            <path d="M 15 71 A 14 14 0 1 0 29 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BL Outer */}
-            <path d="M 15 57 A 28 28 0 1 0 43 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BL Inner */}
+            <path d="M 29 85 A 14 14 0 1 1 15 71" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BL Outer */}
+            <path d="M 43 85 A 28 28 0 1 1 15 57" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BL Inner */}
 
             <path d="M 85 71 A 14 14 0 1 1 71 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BR Outer */}
             <path d="M 85 57 A 28 28 0 1 1 57 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BR Inner */}
@@ -123,7 +123,7 @@ export default function SurakartaBoard() {
                   <span className="absolute z-0 h-2 w-2 rounded-full border-2 border-[#3a2218] bg-[#b0b0b0]" />
 
                   {isDest && (
-                    <span className={`absolute z-10 h-6 w-6 animate-pulse rounded-full border-2 ${isCapture ? 'border-rose-500 bg-rose-500/30' : 'border-emerald-600 bg-emerald-500/20'}`} />
+                    <span className={`absolute z-10 h-10 w-10 md:h-12 md:w-12 animate-pulse rounded-full border-[4px] ${isCapture ? 'border-rose-500 bg-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.6)]' : 'border-emerald-600 bg-emerald-500/20'}`} />
                   )}
 
                   <AnimatePresence>
