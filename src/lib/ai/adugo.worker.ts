@@ -15,12 +15,21 @@ self.addEventListener('message', (e: MessageEvent) => {
     let timeBudget = 1000;
     let maxDepth = 7;
 
-    if (difficulty === 'facil') { timeBudget = 300; maxDepth = 3; }
-    else if (difficulty === 'medio') { timeBudget = 800; maxDepth = 5; }
-    else if (difficulty === 'dificil') { timeBudget = 2000; maxDepth = 8; }
+    // No modo fácil, a IA pensa raso e tem pouco tempo (pode errar mais rápido)
+    if (difficulty === 'facil') { timeBudget = 150; maxDepth = 2; }
+    // No modo médio, ela consegue ver uns pulos mas cai em armadilhas
+    else if (difficulty === 'medio') { timeBudget = 600; maxDepth = 4; }
+    // No modo difícil, ela procura até o fim!
+    else if (difficulty === 'dificil') { timeBudget = 2500; maxDepth = 8; }
 
     const startTime = performance.now();
-    let bestGlobalMove = typedState.legalMoves[0];
+    
+    // No modo fácil, embaralhamos a lista base para ela não pegar sempre a captura "perfeita" no mesmo empate
+    let baseMoves = [...typedState.legalMoves];
+    if (difficulty === 'facil') {
+      baseMoves.sort(() => Math.random() - 0.5);
+    }
+    let bestGlobalMove = baseMoves[0];
 
     // Iterative deepening
     for (let d = 1; d <= maxDepth; d++) {

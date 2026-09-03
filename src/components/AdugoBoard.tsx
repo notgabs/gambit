@@ -65,6 +65,16 @@ export default function AdugoBoard() {
     return () => { active = false; };
   }, [state, isThinking, difficulty]);
 
+  useEffect(() => {
+    if (state.winner !== null) {
+      if (state.winner === 1) {
+        new Audio('/onca.mp3').play().catch(() => {});
+      } else if (state.winner === -1) {
+        new Audio('/caes.mp3').play().catch(() => {});
+      }
+    }
+  }, [state.winner]);
+
   const destinations = useMemo(() => {
     const map = new Map<number, AdugoMove>();
     if (selected === null) return map;

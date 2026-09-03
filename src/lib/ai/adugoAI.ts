@@ -41,8 +41,8 @@ export function evaluateAdugo(state: AdugoState): number {
     else if (board[i] === -1) dogPositions.push(i);
   }
 
-  let score = dogsCaptured * 8000;
-  score -= pliesWithoutCapture * 5; 
+  let score = dogsCaptured * 2500; // Valor muito menor! Os cães agora aceitam sacrificar 1 ou 2 peças se isso garantir o cerco.
+  score -= pliesWithoutCapture * 10; // Cães perdem pontos ao enrolar
 
   if (jaguarPos !== -1) {
     score += JAGUAR_PST[jaguarPos];
@@ -60,9 +60,10 @@ export function evaluateAdugo(state: AdugoState): number {
       }
     }
 
-    score += jaguarMobility * 500;
-    if (jaguarMobility <= 1) score -= 3000; // Almost trapped
-    score += vulnerableDogs * 2500;
+    // Mobilidade da Onça é a maior inimiga dos Cães. Cães vão focar em reduzir isso a zero.
+    score += jaguarMobility * 800;
+    if (jaguarMobility <= 1) score -= 5000; // Cheiro de vitória para os cães!
+    score += vulnerableDogs * 1000; // Reduzi o peso de "cão vulnerável" pra eles não fugirem tanto
 
     let dogDistSum = 0;
     let dogsSurrounding = 0;
@@ -72,8 +73,8 @@ export function evaluateAdugo(state: AdugoState): number {
       if (d === 1) dogsSurrounding++;
     }
 
-    score += dogDistSum * 40; 
-    score -= dogsSurrounding * 600; 
+    score += dogDistSum * 60; // Puxa todos os cães para perto
+    score -= dogsSurrounding * 1500; // Recompensa absurda por cercar
   }
 
   return score;
