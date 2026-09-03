@@ -1,19 +1,40 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, RotateCcw, Trophy, AlertTriangle } from 'lucide-react';
-import { newSurakartaGame, applyMove, generateLegalMoves } from '@/lib/engine/surakarta';
+import { newSurakartaGame, applyMove, generateLegalMoves, BOARD_POINTS } from '@/lib/engine/surakarta';
 import type { SurakartaState, SurakartaMove } from '@/types/surakarta';
+
+// Duração do "salto" final da captura (em segundos)
+const JUMP_DURATION = 0.42;
+
+// Duração do deslize proporcional ao tamanho do trajeto percorrido
+const getSlideDuration = (move: SurakartaMove) =>
+  Math.max(0.35, (move.railSteps ?? 1) * 0.22);
 
 export default function SurakartaBoard() {
   const [state, setState] = useState<SurakartaState>(() => newSurakartaGame());
   const [selected, setSelected] = useState<{ x: number, y: number } | null>(null);
-  const [animatingCapture, setAnimatingCapture] = useState<SurakartaMove | null>(null);
+
+  const [pendingMove, setPendingMove] = useState<SurakartaMove | null>(null);
+  const [animPhase, setAnimPhase] = useState<'slide' | 'jump' | null>(null);
+
+  const slideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAnimTimers = () => {
+    if (slideTimeoutRef.current) clearTimeout(slideTimeoutRef.current);
+    if (jumpTimeoutRef.current) clearTimeout(jumpTimeoutRef.current);
+    slideTimeoutRef.current = null;
+    jumpTimeoutRef.current = null;
+  };
 
   const restart = () => {
+    clearAnimTimers();
     setState(newSurakartaGame());
     setSelected(null);
-    setAnimatingCapture(null);
+    setPendingMove(null);
+    setAnimPhase(null);
   };
 
   const legalMoves = useMemo(() => generateLegalMoves(state), [state]);
@@ -35,19 +56,46 @@ export default function SurakartaBoard() {
     return s;
   }, [legalMoves]);
 
+  const runCapture = (move: SurakartaMove) => {
+    setSelected(null);
+    setPendingMove(move);
+    const slideDuration = getSlideDuration(move);
+
+    const finish = () => {
+      setState(s => applyMove(s, move));
+      setPendingMove(null);
+      setAnimPhase(null);
+    };
+
+    if (move.hasFinalHop) {
+      if ((move.railSteps ?? 0) > 0) {
+        // Fase 1: desliza pelos trilhos/loops até ficar "na frente" do alvo
+        setAnimPhase('slide');
+        slideTimeoutRef.current = setTimeout(() => {
+          // Fase 2: salta e captura
+          setAnimPhase('jump');
+          jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
+        }, slideDuration * 1000);
+      } else {
+        // Caso raro: captura sem trecho de deslize, só o salto
+        setAnimPhase('jump');
+        jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
+      }
+    } else {
+      // A captura termina saindo de um loop: desliza até o fim, sem salto reto
+      setAnimPhase('slide');
+      slideTimeoutRef.current = setTimeout(finish, slideDuration * 1000);
+    }
+  };
+
   const onNodeClick = (x: number, y: number) => {
-    if (state.winner !== null || animatingCapture) return;
+    if (state.winner !== null || animPhase !== null) return;
 
     const destKey = `${x},${y}`;
     if (selected !== null && destinations.has(destKey)) {
       const move = destinations.get(destKey)!;
-      if (move.isCapture && move.path) {
-        setAnimatingCapture(move);
-        setSelected(null);
-        setTimeout(() => {
-          setState(s => applyMove(s, move));
-          setAnimatingCapture(null);
-        }, 1500);
+      if (move.isCapture) {
+        runCapture(move);
       } else {
         setState(s => applyMove(s, move));
         setSelected(null);
@@ -62,8 +110,9 @@ export default function SurakartaBoard() {
     }
   };
 
-  // Coordenadas SVG
-  const P = [15, 29, 43, 57, 71, 85];
+  const movingColor = pendingMove
+    ? (state.board[pendingMove.fromY][pendingMove.fromX] === 1 ? '#3a2218' : '#e8dcc4')
+    : '#3a2218';
 
   return (
     <div className="flex flex-col items-center justify-between h-[100dvh] w-screen bg-[#e8dcc4] p-3 md:p-6 overflow-hidden relative font-sans select-none">
@@ -89,35 +138,38 @@ export default function SurakartaBoard() {
 
       <div className="relative z-10 my-auto shrink-0 w-full" style={{ containerType: 'size', height: 'min(70vh, 100vw)', aspectRatio: '1/1' }}>
         <div className="absolute inset-0 mx-auto rounded-2xl border-8 border-[#3a2218] bg-[#fdf8ef] shadow-[8px_8px_0_#3a2218] overflow-hidden" style={{ aspectRatio: '1/1', height: '100%' }}>
-          
+
           <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {/* Grid 6x6 Lines */}
-            {P.map((val, i) => (
+            {BOARD_POINTS.map((val, i) => (
               <React.Fragment key={`grid-${i}`}>
-                <line x1={P[0]} y1={val} x2={P[5]} y2={val} stroke="#3a2218" strokeWidth="1.2" strokeLinecap="round" />
-                <line x1={val} y1={P[0]} x2={val} y2={P[5]} stroke="#3a2218" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1={BOARD_POINTS[0]} y1={val} x2={BOARD_POINTS[5]} y2={val} stroke="#3a2218" strokeWidth="1.2" strokeLinecap="round" />
+                <line x1={val} y1={BOARD_POINTS[0]} x2={val} y2={BOARD_POINTS[5]} stroke="#3a2218" strokeWidth="1.2" strokeLinecap="round" />
               </React.Fragment>
             ))}
 
-            {/* Espirais (Loops) */}
-            <path d="M 15 29 A 14 14 0 1 1 29 15" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TL Outer */}
-            <path d="M 15 43 A 28 28 0 1 1 43 15" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TL Inner */}
-            
-            <path d="M 71 15 A 14 14 0 1 1 85 29" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TR Outer */}
-            <path d="M 57 15 A 28 28 0 1 1 85 43" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* TR Inner */}
+            {/* Loops pequenos — roxo */}
+            <path d="M 20 32 A 12 12 0 1 1 32 20" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M 68 20 A 12 12 0 1 1 80 32" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M 32 80 A 12 12 0 1 1 20 68" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M 80 68 A 12 12 0 1 1 68 80" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
 
-            <path d="M 29 85 A 14 14 0 1 1 15 71" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BL Outer */}
-            <path d="M 43 85 A 28 28 0 1 1 15 57" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BL Inner */}
+            {/* Loops grandes — rosa */}
+            <path d="M 20 44 A 24 24 0 1 1 44 20" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M 56 20 A 24 24 0 1 1 80 44" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M 44 80 A 24 24 0 1 1 20 56" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
+            <path d="M 80 56 A 24 24 0 1 1 56 80" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
 
-            <path d="M 85 71 A 14 14 0 1 1 71 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BR Outer */}
-            <path d="M 85 57 A 28 28 0 1 1 57 85" fill="none" stroke="#3a2218" strokeWidth="1.2" /> {/* BR Inner */}
-
-            {/* Peça Animada na Captura */}
-            {animatingCapture && animatingCapture.path && (
+            {/* Fase 1: deslize pelos trilhos/loops */}
+            {pendingMove && animPhase === 'slide' && pendingMove.railPath && (
               <g>
-                <path id="capturePath" d={animatingCapture.path} fill="none" stroke="transparent" />
-                <circle r="4" fill={state.turn === 1 ? '#3a2218' : '#e8dcc4'} stroke="#3a2218" strokeWidth="0.8">
-                  <animateMotion dur="1.5s" repeatCount="1" fill="freeze" calcMode="linear">
+                <path id="capturePath" d={pendingMove.railPath} fill="none" stroke="transparent" />
+                <circle r="4" fill={movingColor} stroke="#3a2218" strokeWidth="0.8">
+                  <animateMotion
+                    dur={`${getSlideDuration(pendingMove)}s`}
+                    repeatCount="1"
+                    fill="freeze"
+                    calcMode="linear"
+                  >
                     <mpath href="#capturePath" />
                   </animateMotion>
                 </circle>
@@ -125,12 +177,39 @@ export default function SurakartaBoard() {
             )}
           </svg>
 
-          {/* Nós e Peças */}
-          {Array.from({ length: 6 }).map((_, y) => 
+          {/* Fase 2: salto final da captura (DOM, fora do SVG) */}
+          {pendingMove && animPhase === 'jump' && (
+            <motion.div
+              className="absolute z-30 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              initial={{
+                left: `${BOARD_POINTS[pendingMove.preCaptureX ?? pendingMove.fromX]}%`,
+                top: `${BOARD_POINTS[pendingMove.preCaptureY ?? pendingMove.fromY]}%`,
+              }}
+              animate={{
+                left: `${BOARD_POINTS[pendingMove.toX]}%`,
+                top: `${BOARD_POINTS[pendingMove.toY]}%`,
+              }}
+              transition={{ duration: JUMP_DURATION, ease: 'easeInOut' }}
+            >
+              <motion.div
+                className="h-7 w-7 md:h-8 md:w-8 rounded-full border-[3px] border-[#3a2218] shadow-md"
+                style={{ backgroundColor: movingColor }}
+                animate={{ y: [0, -22, 0], scale: [1, 1.2, 1] }}
+                transition={{ duration: JUMP_DURATION, ease: 'easeOut' }}
+              />
+            </motion.div>
+          )}
+
+          {Array.from({ length: 6 }).map((_, y) =>
             Array.from({ length: 6 }).map((_, x) => {
               const piece = state.board[y][x];
               const isSelected = selected?.x === x && selected?.y === y;
-              const isHidden = animatingCapture && animatingCapture.fromX === x && animatingCapture.fromY === y;
+
+              const isHidden = !!pendingMove && (
+                (pendingMove.fromX === x && pendingMove.fromY === y) ||
+                (animPhase === 'jump' && pendingMove.toX === x && pendingMove.toY === y)
+              );
+
               const destMove = destinations.get(`${x},${y}`);
               const isDest = destMove !== undefined;
               const isCapture = destMove?.isCapture;
@@ -142,7 +221,7 @@ export default function SurakartaBoard() {
                   type="button"
                   onClick={() => onNodeClick(x, y)}
                   className="absolute flex h-9 w-9 md:h-11 md:w-11 items-center justify-center outline-none -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${P[x]}%`, top: `${P[y]}%` }}
+                  style={{ left: `${BOARD_POINTS[x]}%`, top: `${BOARD_POINTS[y]}%` }}
                 >
                   <span className="absolute z-0 h-2 w-2 rounded-full border-2 border-[#3a2218] bg-[#b0b0b0]" />
 
@@ -182,14 +261,14 @@ export default function SurakartaBoard() {
               ) : (
                 <Trophy size={64} className="mx-auto mb-4 text-[#c49a6c]" />
               )}
-              
+
               <h2 className="mb-2 text-3xl font-black uppercase tracking-widest text-[#3a2218]">
                 {state.winner === 0 ? 'Empate' : 'Fim de jogo'}
               </h2>
-              
+
               <p className={`mb-8 text-lg font-black uppercase tracking-widest text-[#3a2218]`}>
-                {state.winner === 0 
-                  ? 'Estagnação!' 
+                {state.winner === 0
+                  ? 'Estagnação!'
                   : state.winner === 1 ? 'Pretas Venceram!' : 'Brancas Venceram!'}
               </p>
 

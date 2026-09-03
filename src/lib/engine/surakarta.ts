@@ -19,38 +19,44 @@ export function newSurakartaGame(): SurakartaState {
   };
 }
 
-// Ray mapping for when a piece leaves the 6x6 grid.
-// Key: "x,y,dx,dy" where (x,y) is the point ON the grid, and (dx,dy) is the direction pointing OUT of the grid.
-// Value: the new coordinate and direction after traversing the loop.
-const P = [15, 29, 43, 57, 71, 85];
+/**
+ * Coordenadas dos nós do tabuleiro em % da viewBox (0-100).
+ * Margem de 20 em cada borda + espaçamento de 12 entre linhas.
+ * Isso garante que o loop grande (raio 24) nunca "estoure" para
+ * coordenadas negativas nos cantos (o bug do círculo cortado).
+ *
+ * ⚠️ Única fonte de verdade — importe isso no componente, não duplique.
+ */
+export const BOARD_POINTS = [20, 32, 44, 56, 68, 80];
 
+// Simulador de Ray Tracing para os loops
 function getNextRayState(x: number, y: number, dx: number, dy: number): { x: number, y: number, dx: number, dy: number, arc?: string } | null {
   const key = `${x},${y},${dx},${dy}`;
-  
+
   const loops: Record<string, {x:number, y:number, dx:number, dy:number, arc: string}> = {
     // TL
-    "0,1,-1,0": { x: 1, y: 0, dx: 0, dy: 1, arc: "A 14 14 0 1 1 29 15" },
-    "1,0,0,-1": { x: 0, y: 1, dx: 1, dy: 0, arc: "A 14 14 0 1 0 15 29" },
-    "0,2,-1,0": { x: 2, y: 0, dx: 0, dy: 1, arc: "A 28 28 0 1 1 43 15" },
-    "2,0,0,-1": { x: 0, y: 2, dx: 1, dy: 0, arc: "A 28 28 0 1 0 15 43" },
+    "0,1,-1,0": { x: 1, y: 0, dx: 0, dy: 1, arc: "A 12 12 0 1 1 32 20" },
+    "1,0,0,-1": { x: 0, y: 1, dx: 1, dy: 0, arc: "A 12 12 0 1 0 20 32" },
+    "0,2,-1,0": { x: 2, y: 0, dx: 0, dy: 1, arc: "A 24 24 0 1 1 44 20" },
+    "2,0,0,-1": { x: 0, y: 2, dx: 1, dy: 0, arc: "A 24 24 0 1 0 20 44" },
 
     // TR
-    "5,1,1,0":  { x: 4, y: 0, dx: 0, dy: 1, arc: "A 14 14 0 1 0 71 15" },
-    "4,0,0,-1": { x: 5, y: 1, dx: -1, dy: 0, arc: "A 14 14 0 1 1 85 29" },
-    "5,2,1,0":  { x: 3, y: 0, dx: 0, dy: 1, arc: "A 28 28 0 1 0 57 15" },
-    "3,0,0,-1": { x: 5, y: 2, dx: -1, dy: 0, arc: "A 28 28 0 1 1 85 43" },
+    "5,1,1,0":  { x: 4, y: 0, dx: 0, dy: 1, arc: "A 12 12 0 1 0 68 20" },
+    "4,0,0,-1": { x: 5, y: 1, dx: -1, dy: 0, arc: "A 12 12 0 1 1 80 32" },
+    "5,2,1,0":  { x: 3, y: 0, dx: 0, dy: 1, arc: "A 24 24 0 1 0 56 20" },
+    "3,0,0,-1": { x: 5, y: 2, dx: -1, dy: 0, arc: "A 24 24 0 1 1 80 44" },
 
     // BL
-    "0,4,-1,0": { x: 1, y: 5, dx: 0, dy: -1, arc: "A 14 14 0 1 0 29 85" },
-    "1,5,0,1":  { x: 0, y: 4, dx: 1, dy: 0, arc: "A 14 14 0 1 1 15 71" },
-    "0,3,-1,0": { x: 2, y: 5, dx: 0, dy: -1, arc: "A 28 28 0 1 0 43 85" },
-    "2,5,0,1":  { x: 0, y: 3, dx: 1, dy: 0, arc: "A 28 28 0 1 1 15 57" },
+    "0,4,-1,0": { x: 1, y: 5, dx: 0, dy: -1, arc: "A 12 12 0 1 0 32 80" },
+    "1,5,0,1":  { x: 0, y: 4, dx: 1, dy: 0, arc: "A 12 12 0 1 1 20 68" },
+    "0,3,-1,0": { x: 2, y: 5, dx: 0, dy: -1, arc: "A 24 24 0 1 0 44 80" },
+    "2,5,0,1":  { x: 0, y: 3, dx: 1, dy: 0, arc: "A 24 24 0 1 1 20 56" },
 
     // BR
-    "5,4,1,0":  { x: 4, y: 5, dx: 0, dy: -1, arc: "A 14 14 0 1 1 71 85" },
-    "4,5,0,1":  { x: 5, y: 4, dx: -1, dy: 0, arc: "A 14 14 0 1 0 85 71" },
-    "5,3,1,0":  { x: 3, y: 5, dx: 0, dy: -1, arc: "A 28 28 0 1 1 57 85" },
-    "3,5,0,1":  { x: 5, y: 3, dx: -1, dy: 0, arc: "A 28 28 0 1 0 85 57" },
+    "5,4,1,0":  { x: 4, y: 5, dx: 0, dy: -1, arc: "A 12 12 0 1 1 68 80" },
+    "4,5,0,1":  { x: 5, y: 4, dx: -1, dy: 0, arc: "A 12 12 0 1 0 80 68" },
+    "5,3,1,0":  { x: 3, y: 5, dx: 0, dy: -1, arc: "A 24 24 0 1 1 56 80" },
+    "3,5,0,1":  { x: 5, y: 3, dx: -1, dy: 0, arc: "A 24 24 0 1 0 80 56" },
   };
 
   if (loops[key]) return loops[key];
@@ -60,7 +66,7 @@ function getNextRayState(x: number, y: number, dx: number, dy: number): { x: num
   if (nx >= 0 && nx <= 5 && ny >= 0 && ny <= 5) {
     return { x: nx, y: ny, dx, dy };
   }
-  
+
   return null;
 }
 
@@ -72,7 +78,7 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
     for (let x = 0; x < 6; x++) {
       if (board[y][x] !== turn) continue;
 
-      // 1. Normal Moves
+      // 1. Movimentos Normais
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -86,7 +92,7 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
         }
       }
 
-      // 2. Capturing Moves
+      // 2. Movimentos de Captura
       const orthogonalDirs = [ [0,-1], [0,1], [-1,0], [1,0] ];
       for (const [startDx, startDy] of orthogonalDirs) {
         let currX = x;
@@ -95,23 +101,25 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
         let dy = startDy;
         let loopsTraversed = 0;
         let steps = 0;
-        
-        let path = `M ${P[x]} ${P[y]}`;
+
+        // Cada passo do "raio" vira um waypoint, com seu próprio
+        // trecho de path. Isso permite separar depois o trajeto
+        // (rail) do salto final.
+        const waypoints: { x: number; y: number; segment: string }[] = [];
 
         while (steps < 50) {
           const nextState = getNextRayState(currX, currY, dx, dy);
           if (!nextState) break;
 
           const isLoop = (nextState.x !== currX + dx) || (nextState.y !== currY + dy);
-          if (isLoop) {
-            loopsTraversed++;
-            if (nextState.arc) {
-              path += ` ${nextState.arc}`;
-            }
-          } else {
-            path += ` L ${P[nextState.x]} ${P[nextState.y]}`;
-          }
-          
+          if (isLoop) loopsTraversed++;
+
+          const segment = isLoop && nextState.arc
+            ? ` ${nextState.arc}`
+            : ` L ${BOARD_POINTS[nextState.x]} ${BOARD_POINTS[nextState.y]}`;
+
+          waypoints.push({ x: nextState.x, y: nextState.y, segment });
+
           currX = nextState.x;
           currY = nextState.y;
           dx = nextState.dx;
@@ -120,7 +128,33 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
 
           if (board[currY][currX] !== 0) {
             if (board[currY][currX] !== turn && loopsTraversed > 0) {
-              moves.push({ fromX: x, fromY: y, toX: currX, toY: currY, isCapture: true, path });
+              const lastWaypoint = waypoints[waypoints.length - 1];
+              const lastIsStraight = lastWaypoint.segment.trim().startsWith('L');
+
+              // Se o último passo é reto, ele vira o "salto" e sai do rail.
+              // Se o último passo é a saída de um loop, mantemos ele no rail
+              // (sem salto), pra não cortar reto por cima do tabuleiro.
+              const railWaypoints = lastIsStraight ? waypoints.slice(0, -1) : waypoints;
+
+              const railPath = `M ${BOARD_POINTS[x]} ${BOARD_POINTS[y]}` +
+                railWaypoints.map(w => w.segment).join('');
+
+              const pre = railWaypoints.length > 0
+                ? railWaypoints[railWaypoints.length - 1]
+                : { x, y };
+
+              moves.push({
+                fromX: x,
+                fromY: y,
+                toX: currX,
+                toY: currY,
+                isCapture: true,
+                railPath,
+                railSteps: railWaypoints.length,
+                preCaptureX: lastIsStraight ? pre.x : currX,
+                preCaptureY: lastIsStraight ? pre.y : currY,
+                hasFinalHop: lastIsStraight,
+              });
             }
             break;
           }
@@ -134,7 +168,7 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
 
 export function applyMove(state: SurakartaState, move: SurakartaMove): SurakartaState {
   const board = state.board.map(row => [...row]);
-  
+
   board[move.toY][move.toX] = board[move.fromY][move.fromX];
   board[move.fromY][move.fromX] = 0;
 
@@ -153,11 +187,10 @@ export function applyMove(state: SurakartaState, move: SurakartaMove): Surakarta
 
   const nextTurn = state.turn === 1 ? -1 : 1;
   const pliesWithoutCapture = move.isCapture ? 0 : state.pliesWithoutCapture + 1;
-  
+
   const historyKey = JSON.stringify(board) + nextTurn;
   const newHistory = [...state.history, historyKey];
-  
-  // Draws
+
   if (newHistory.filter(h => h === historyKey).length >= 3) winner = 0;
   if (pliesWithoutCapture >= 60) winner = 0;
 
