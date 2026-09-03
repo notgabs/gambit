@@ -209,41 +209,43 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
           steps++;
 
           if (board[currY][currX] !== 0) {
-            if (board[currY][currX] !== turn && loopsTraversed > 0) {
-              // Tenta "pousar" 1 casa depois da peça capturada, na direção atual.
+            if (board[currY][currX] !== turn) {
               const landing = getNextRayState(currX, currY, dx, dy);
 
-              if (landing && board[landing.y][landing.x] === 0) {
-                const railPoints = points.slice(0, -1); // tudo antes da peça capturada
-                const capturedPointPct = points[points.length - 1];
-
-                const hopPoints: { x: number; y: number }[] = [
-                  railPoints.length > 0 ? railPoints[railPoints.length - 1] : { x: P[x], y: P[y] },
-                  capturedPointPct,
-                ];
-
+              if (landing) {
                 const landingIsLoop = (landing.x !== currX + dx) || (landing.y !== currY + dy);
-                if (landingIsLoop && landing.arcSample) {
-                  hopPoints.push(...landing.arcSample(ARC_SAMPLE_STEPS));
-                } else {
-                  hopPoints.push({ x: P[landing.x], y: P[landing.y] });
-                }
+                const totalLoops = loopsTraversed + (landingIsLoop ? 1 : 0);
 
-                moves.push({
-                  fromX: x,
-                  fromY: y,
-                  toX: landing.x,
-                  toY: landing.y,
-                  isCapture: true,
-                  slidePoints: railPoints.length > 1 ? railPoints : undefined,
-                  capturedX: currX,
-                  capturedY: currY,
-                  hopPoints,
-                });
+                if (totalLoops > 0 && board[landing.y][landing.x] === 0) {
+                  const railPoints = points.slice(0, -1);
+                  const capturedPointPct = points[points.length - 1];
+
+                  const hopPoints: { x: number; y: number }[] = [
+                    railPoints.length > 0 ? railPoints[railPoints.length - 1] : { x: P[x], y: P[y] },
+                    capturedPointPct,
+                  ];
+
+                  if (landingIsLoop && landing.arcSample) {
+                    hopPoints.push(...landing.arcSample(ARC_SAMPLE_STEPS));
+                  } else {
+                    hopPoints.push({ x: P[landing.x], y: P[landing.y] });
+                  }
+
+                  moves.push({
+                    fromX: x,
+                    fromY: y,
+                    toX: landing.x,
+                    toY: landing.y,
+                    isCapture: true,
+                    slidePoints: railPoints.length > 1 ? railPoints : undefined,
+                    capturedX: currX,
+                    capturedY: currY,
+                    hopPoints,
+                  });
+                }
               }
-              // Se não achou pouso válido (sem rio ou casa ocupada), a jogada simplesmente não é gerada.
             }
-            break; // trilha bloqueada por essa peça de qualquer forma
+            break;
           }
         }
       }
