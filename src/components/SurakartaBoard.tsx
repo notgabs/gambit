@@ -67,6 +67,16 @@ export default function SurakartaBoard() {
 
   const isThinking = mode === 'ai' && state.turn === aiPlayer && state.winner === null;
 
+  // Expõe ferramentas de debug no console (só em desenvolvimento)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production') {
+      import('@/lib/engine/surakarta').then(({ debugMovesFrom }) => {
+        (window as any).debugSurakarta = (notation: string) => debugMovesFrom(state, notation);
+        (window as any).surakartaState = state;
+      });
+    }
+  }, [state]);
+
   useEffect(() => {
     if (!isThinking || animPhase !== null) return;
     

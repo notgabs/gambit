@@ -22,7 +22,7 @@ export function newSurakartaGame(): SurakartaState {
 const MARGIN = 25;
 const STEP = 10;
 
-export const BOARD_POINTS = [0, 1, 2, 3, 4, 5].map(i => MARGIN + i * STEP); // [25,35,45,55,65,75]
+export const BOARD_POINTS = [0, 1, 2, 3, 4, 5].map(i => MARGIN + i * STEP);
 export const LOOP_RADIUS_SMALL = STEP;
 export const LOOP_RADIUS_LARGE = STEP * 2;
 
@@ -110,6 +110,44 @@ function buildLoopMap(): Record<string, RayTransition> {
 
 const LOOP_MAP = buildLoopMap();
 
+/**
+ * 🛡️ AUTO-VERIFICAÇÃO DE INTEGRIDADE
+ */
+function validateLoopMapIntegrity() {
+  const errors: string[] = [];
+  const keys = Object.keys(LOOP_MAP);
+
+  if (keys.length !== 16) {
+    errors.push(`Esperava 16 transições de loop (8 loops x 2 sentidos), encontrei ${keys.length}.`);
+  }
+
+  for (const key of keys) {
+    const [xs, ys, dxs, dys] = key.split(',').map(Number);
+
+    const isEdgeCell = xs === 0 || xs === 5 || ys === 0 || ys === 5;
+    if (!isEdgeCell) {
+      errors.push(`Transição "${key}" está numa célula INTERNA (${xs},${ys}) — loops só podem estar na borda!`);
+    }
+
+    const t = LOOP_MAP[key];
+    const reverseKey = `${t.x},${t.y},${-t.dx},${-t.dy}`;
+    const reverse = LOOP_MAP[reverseKey];
+    if (!reverse) {
+      errors.push(`Transição "${key}" -> (${t.x},${t.y}) não tem par reverso ("${reverseKey}" ausente).`);
+    } else if (reverse.x !== xs || reverse.y !== ys) {
+      errors.push(`Transição "${key}" e seu reverso "${reverseKey}" não formam um ciclo fechado consistente.`);
+    }
+  }
+
+  if (errors.length > 0) {
+    console.error('🚨 [Surakarta] Falha de integridade geométrica detectada:\n' + errors.join('\n'));
+  }
+}
+
+if (process.env.NODE_ENV !== 'production') {
+  validateLoopMapIntegrity();
+}
+
 interface NextRayResult {
   x: number; y: number; dx: number; dy: number;
   arcSample?: (steps: number) => { x: number; y: number }[];
@@ -155,6 +193,32 @@ export function getDecorativeLoops(): DecorativeLoop[] {
   ];
 }
 
+/**
+ * 🎯 FUNÇÃO ÚNICA DE RASTREAMENTO
+ */
+interface TracedStep {
+  x: number;
+  y: number;
+  isLoopCrossing: boolean;
+  arcSample?: (steps: number) => { x: number; y: number }[];
+}
+
+function traceRay(x: number, y: number, dx: number, dy: number, maxSteps = 50): TracedStep[] {
+  const trace: TracedStep[] = [];
+  let cx = x, cy = y, cdx = dx, cdy = dy;
+
+  for (let i = 0; i < maxSteps; i++) {
+    const next = getNextRayState(cx, cy, cdx, cdy);
+    if (!next) break;
+
+    const isLoopCrossing = (next.x !== cx + cdx) || (next.y !== cy + cdy);
+    trace.push({ x: next.x, y: next.y, isLoopCrossing, arcSample: next.arcSample });
+
+    cx = next.x; cy = next.y; cdx = next.dx; cdy = next.dy;
+  }
+  return trace;
+}
+
 export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
   const moves: SurakartaMove[] = [];
   const { board, turn } = state;
@@ -164,7 +228,7 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
     for (let x = 0; x < 6; x++) {
       if (board[y][x] !== turn) continue;
 
-      // 1. Movimentos Normais — 1 casa, 8 direções, só se vazia
+      // 1. Movimentos Normais
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           if (dx === 0 && dy === 0) continue;
@@ -178,75 +242,62 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
         }
       }
 
-      // 2. Movimentos de Captura (estilo dama: salta a peça capturada e pousa 1 casa depois)
+      // 2. Movimentos de Captura — usa a MESMA trilha (traceRay)
       const orthogonalDirs = [ [0,-1], [0,1], [-1,0], [1,0] ];
-      for (const [startDx, startDy] of orthogonalDirs) {
-        let currX = x;
-        let currY = y;
-        let dx = startDx;
-        let dy = startDy;
-        let loopsTraversed = 0;
-        let steps = 0;
+      for (const [dx0, dy0] of orthogonalDirs) {
+        const trace = traceRay(x, y, dx0, dy0);
+        let loopsSoFar = 0;
 
-        const points: { x: number; y: number }[] = [{ x: P[x], y: P[y] }];
+        for (let i = 0; i < trace.length; i++) {
+          const step = trace[i];
+          if (step.isLoopCrossing) loopsSoFar++;
 
-        while (steps < 50) {
-          const next = getNextRayState(currX, currY, dx, dy);
-          if (!next) break;
+          const occupant = board[step.y][step.x];
+          if (occupant === 0) continue; 
 
-          const isLoop = (next.x !== currX + dx) || (next.y !== currY + dy);
-          if (isLoop && next.arcSample) {
-            loopsTraversed++;
-            points.push(...next.arcSample(ARC_SAMPLE_STEPS));
-          } else {
-            points.push({ x: P[next.x], y: P[next.y] });
-          }
+          if (occupant !== turn) {
+            const landing = trace[i + 1]; 
 
-          currX = next.x;
-          currY = next.y;
-          dx = next.dx;
-          dy = next.dy;
-          steps++;
+            if (landing) {
+              const totalLoops = loopsSoFar + (landing.isLoopCrossing ? 1 : 0);
+              const landingEmpty = board[landing.y][landing.x] === 0;
 
-          if (board[currY][currX] !== 0) {
-            if (board[currY][currX] !== turn) {
-              const landing = getNextRayState(currX, currY, dx, dy);
-
-              if (landing) {
-                const landingIsLoop = (landing.x !== currX + dx) || (landing.y !== currY + dy);
-                const totalLoops = loopsTraversed + (landingIsLoop ? 1 : 0);
-
-                if (totalLoops > 0 && board[landing.y][landing.x] === 0) {
-                  const railPoints = points.slice(0, -1);
-                  const capturedPointPct = points[points.length - 1];
-
-                  const hopPoints: { x: number; y: number }[] = [
-                    railPoints.length > 0 ? railPoints[railPoints.length - 1] : { x: P[x], y: P[y] },
-                    capturedPointPct,
-                  ];
-
-                  if (landingIsLoop && landing.arcSample) {
-                    hopPoints.push(...landing.arcSample(ARC_SAMPLE_STEPS));
+              if (totalLoops > 0 && landingEmpty) {
+                const before = i === 0 ? { x: P[x], y: P[y] } : { x: P[trace[i - 1].x], y: P[trace[i - 1].y] };
+                const railPoints = [{ x: P[x], y: P[y] }];
+                for (let k = 0; k < i; k++) {
+                  if (trace[k].isLoopCrossing && trace[k].arcSample) {
+                    railPoints.push(...trace[k].arcSample!(ARC_SAMPLE_STEPS));
                   } else {
-                    hopPoints.push({ x: P[landing.x], y: P[landing.y] });
+                    railPoints.push({ x: P[trace[k].x], y: P[trace[k].y] });
                   }
-
-                  moves.push({
-                    fromX: x,
-                    fromY: y,
-                    toX: landing.x,
-                    toY: landing.y,
-                    isCapture: true,
-                    slidePoints: railPoints.length > 1 ? railPoints : undefined,
-                    capturedX: currX,
-                    capturedY: currY,
-                    hopPoints,
-                  });
                 }
+
+                const hopPoints: { x: number; y: number }[] = [
+                  before,
+                  { x: P[step.x], y: P[step.y] }, 
+                ];
+                if (landing.isLoopCrossing && landing.arcSample) {
+                  hopPoints.push(...landing.arcSample(ARC_SAMPLE_STEPS));
+                } else {
+                  hopPoints.push({ x: P[landing.x], y: P[landing.y] });
+                }
+
+                moves.push({
+                  fromX: x,
+                  fromY: y,
+                  toX: landing.x,
+                  toY: landing.y,
+                  isCapture: true,
+                  slidePoints: railPoints.length > 1 ? railPoints : undefined,
+                  capturedX: step.x,
+                  capturedY: step.y,
+                  hopPoints,
+                });
               }
             }
-            break;
           }
+          break; 
         }
       }
     }
@@ -258,8 +309,6 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
 export function applyMove(state: SurakartaState, move: SurakartaMove): SurakartaState {
   const board = state.board.map(row => [...row]);
 
-  // ⚠️ Importante: agora 'to' NÃO é mais a casa da peça capturada,
-  // então ela precisa ser removida explicitamente daqui.
   if (move.isCapture && move.capturedX !== undefined && move.capturedY !== undefined) {
     board[move.capturedY][move.capturedX] = 0;
   }
@@ -306,4 +355,43 @@ export function applyMove(state: SurakartaState, move: SurakartaMove): Surakarta
   }
 
   return newState;
+}
+
+// ──────────────────────────────────────────────────────────────
+// 🔧 FERRAMENTAS DE DEBUG
+// ──────────────────────────────────────────────────────────────
+
+export function xyToNotation(x: number, y: number): string {
+  const letters = 'abcdef';
+  const letter = letters[5 - y];
+  const number = x + 1;
+  return `${letter}${number}`;
+}
+
+export function notationToXY(notation: string): { x: number; y: number } {
+  const letter = notation[0].toLowerCase();
+  const number = parseInt(notation.slice(1), 10);
+  const y = 5 - 'abcdef'.indexOf(letter);
+  const x = number - 1;
+  return { x, y };
+}
+
+export function debugMovesFrom(state: SurakartaState, notation: string) {
+  const { x, y } = notationToXY(notation);
+  const piece = state.board[y]?.[x];
+  const moves = generateLegalMoves(state).filter(m => m.fromX === x && m.fromY === y);
+
+  const result = {
+    origem: notation,
+    coordenadaInterna: { x, y },
+    peca: piece === 1 ? 'Preta' : piece === -1 ? 'Branca' : 'Vazia',
+    movimentos: moves.map(m => ({
+      destino: xyToNotation(m.toX, m.toY),
+      tipo: m.isCapture ? 'CAPTURA' : 'normal',
+      captura: m.isCapture ? xyToNotation(m.capturedX!, m.capturedY!) : null,
+    })),
+  };
+
+  console.table(result.movimentos);
+  return result;
 }
