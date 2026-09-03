@@ -1,60 +1,38 @@
 import { AdugoBoard, AdugoMove, AdugoState } from '@/types/adugo';
 
-/**
- * Tabuleiro exato do Adugo (Fiel à imagem):
- * Malha 5x5 com diagonais alternadas (padrão diamante).
- * Toca inferior forma um triângulo perfeito conectado apenas ao nó 22.
- */
+export const COORDS = [
+  // Grid 5x5
+  { x: 10, y: 10 }, { x: 30, y: 10 }, { x: 50, y: 10 }, { x: 70, y: 10 }, { x: 90, y: 10 },
+  { x: 10, y: 30 }, { x: 30, y: 30 }, { x: 50, y: 30 }, { x: 70, y: 30 }, { x: 90, y: 30 },
+  { x: 10, y: 50 }, { x: 30, y: 50 }, { x: 50, y: 50 }, { x: 70, y: 50 }, { x: 90, y: 50 },
+  { x: 10, y: 70 }, { x: 30, y: 70 }, { x: 50, y: 70 }, { x: 70, y: 70 }, { x: 90, y: 70 },
+  { x: 10, y: 90 }, { x: 30, y: 90 }, { x: 50, y: 90 }, { x: 70, y: 90 }, { x: 90, y: 90 },
+  // Toca
+  { x: 40, y: 110 }, { x: 50, y: 110 }, { x: 60, y: 110 },
+  { x: 30, y: 130 }, { x: 50, y: 130 }, { x: 70, y: 130 },
+];
 
 export const LINES: [number, number][] = [
-  // Grid 5x5 - Horizontais
+  // Horizontais 5x5
   [0, 1], [1, 2], [2, 3], [3, 4],
   [5, 6], [6, 7], [7, 8], [8, 9],
   [10, 11], [11, 12], [12, 13], [13, 14],
   [15, 16], [16, 17], [17, 18], [18, 19],
   [20, 21], [21, 22], [22, 23], [23, 24],
-
-  // Grid 5x5 - Verticais
+  // Verticais 5x5
   [0, 5], [5, 10], [10, 15], [15, 20],
   [1, 6], [6, 11], [11, 16], [16, 21],
   [2, 7], [7, 12], [12, 17], [17, 22],
   [3, 8], [8, 13], [13, 18], [18, 23],
   [4, 9], [9, 14], [14, 19], [19, 24],
-
-  // Grid 5x5 - Diagonais \ (apenas nós onde r+c é par)
+  // Diagonais 5x5 (nós pares)
   [0, 6], [2, 8], [6, 12], [8, 14], [10, 16], [12, 18], [16, 22], [18, 24],
-
-  // Grid 5x5 - Diagonais / (apenas nós onde r+c é par)
   [2, 6], [4, 8], [6, 10], [8, 12], [12, 16], [14, 18], [16, 20], [18, 22],
-
-  // Toca (Triângulo perfeito a partir do nó 22)
+  // Toca
   [22, 25], [22, 26], [22, 27],
   [25, 26], [26, 27],
   [25, 28], [26, 29], [27, 30],
   [28, 29], [29, 30]
-];
-
-// Retas com 3+ pontos (para validação de PULO em linha)
-const FULL_LINES: number[][] = [
-  // Horizontais
-  [0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14],
-  [15, 16, 17, 18, 19], [20, 21, 22, 23, 24],
-  [25, 26, 27], [28, 29, 30],
-
-  // Verticais
-  [0, 5, 10, 15, 20], [1, 6, 11, 16, 21],
-  [2, 7, 12, 17, 22, 26, 29], // Eixo central cruza a toca
-  [3, 8, 13, 18, 23], [4, 9, 14, 19, 24],
-
-  // Diagonais \
-  [0, 6, 12, 18, 24], [2, 8, 14], [10, 16, 22],
-  
-  // Diagonais /
-  [4, 8, 12, 16, 20], [2, 6, 10], [14, 18, 22],
-
-  // Retas da Toca (Bordas laterais do triângulo)
-  [22, 25, 28], // Lado esquerdo
-  [22, 27, 30]  // Lado direito
 ];
 
 export const ADJ: Record<number, number[]> = {};
@@ -64,26 +42,26 @@ for (const [a, b] of LINES) {
   if (!ADJ[b].includes(a)) ADJ[b].push(a);
 }
 
+// Derivar retas para capturas usando matemática vetorial
+export function areColinearAndSequential(a: number, b: number, c: number): boolean {
+  const pA = COORDS[a], pB = COORDS[b], pC = COORDS[c];
+  const cross = (pB.x - pA.x) * (pC.y - pB.y) - (pB.y - pA.y) * (pC.x - pB.x);
+  if (Math.abs(cross) > 0.001) return false;
+  const dot = (pB.x - pA.x) * (pC.x - pB.x) + (pB.y - pA.y) * (pC.y - pB.y);
+  return dot > 0;
+}
+
 export function isStraightLine(a: number, b: number, c: number): boolean {
-  for (const line of FULL_LINES) {
-    const ia = line.indexOf(a);
-    const ib = line.indexOf(b);
-    const ic = line.indexOf(c);
-    if (ia < 0 || ib < 0 || ic < 0) continue;
-    // Pulo válido se os 3 nós são consecutivos em alguma reta
-    if ((ia + 1 === ib && ib + 1 === ic) || (ia - 1 === ib && ib - 1 === ic)) {
-      return true;
-    }
-  }
-  return false;
+  if (!ADJ[a].includes(b) || !ADJ[b].includes(c)) return false;
+  return areColinearAndSequential(a, b, c);
 }
 
 function getValidJumps(from: number, board: AdugoBoard): AdugoMove[] {
   const moves: AdugoMove[] = [];
   for (const victim of ADJ[from]) {
-    if (board[victim] !== -1) continue; // Onça só captura cães
+    if (board[victim] !== -1) continue; 
     for (const dest of ADJ[victim]) {
-      if (dest === from || board[dest] !== 0) continue; // Destino deve ser vazio
+      if (dest === from || board[dest] !== 0) continue; 
       if (isStraightLine(from, victim, dest)) {
         moves.push({ from, to: dest, capture: victim });
       }
@@ -98,41 +76,30 @@ export function generateLegalMoves(state: AdugoState): AdugoMove[] {
 
   for (let i = 0; i < 31; i++) {
     if (board[i] !== turn) continue;
-
-    // Passos simples
     for (const dest of ADJ[i]) {
       if (board[dest] === 0) moves.push({ from: i, to: dest });
     }
-
-    // Pulos (capturas) exclusivas da Onça
-    if (turn === 1) {
-      moves.push(...getValidJumps(i, board));
-    }
+    if (turn === 1) moves.push(...getValidJumps(i, board));
   }
   return moves;
 }
 
 export function newAdugoGame(): AdugoState {
   const board: AdugoBoard = Array(31).fill(0);
-  
-  // Onça no centro
   board[12] = 1;
-  
-  // 14 Cães
-  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14].forEach((p) => {
-    board[p] = -1;
-  });
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14].forEach(p => board[p] = -1);
 
   const state: AdugoState = {
     board,
-    turn: 1, // Onça começa
+    turn: 1,
     winner: null,
     dogsCaptured: 0,
     legalMoves: [],
     history: [board.join('')],
-    rules: { maxCapturesToWin: 5 },
+    rules: { maxCapturesToWin: 5, drawAfterRepetitions: 3, drawAfterPliesWithoutCapture: 60 },
+    pliesPlayed: 0,
+    pliesWithoutCapture: 0,
   };
-  
   state.legalMoves = generateLegalMoves(state);
   return state;
 }
@@ -143,18 +110,26 @@ export function applyMove(state: AdugoState, move: AdugoMove): AdugoState {
   board[move.from] = 0;
 
   let dogsCaptured = state.dogsCaptured;
+  let pliesWithoutCapture = state.pliesWithoutCapture + 1;
+  
   if (move.capture !== undefined) {
     board[move.capture] = 0;
     dogsCaptured += 1;
+    pliesWithoutCapture = 0;
   }
 
   let winner: 1 | -1 | 0 | null = null;
   if (dogsCaptured >= state.rules.maxCapturesToWin) winner = 1;
 
-  const nextTurn: 1 | -1 = state.turn === 1 ? -1 : 1;
   const boardKey = board.join('');
-  const newHistory = [...(state.history || []), boardKey];
+  const newHistory = [...state.history, boardKey];
 
+  const occurrences = newHistory.filter(h => h === boardKey).length;
+  if (occurrences >= state.rules.drawAfterRepetitions) winner = 0;
+  
+  if (pliesWithoutCapture >= state.rules.drawAfterPliesWithoutCapture) winner = 0;
+
+  const nextTurn: 1 | -1 = state.turn === 1 ? -1 : 1;
   const next: AdugoState = {
     ...state,
     board,
@@ -163,16 +138,18 @@ export function applyMove(state: AdugoState, move: AdugoMove): AdugoState {
     winner,
     history: newHistory,
     legalMoves: [],
+    pliesPlayed: state.pliesPlayed + 1,
+    pliesWithoutCapture,
+    lastMove: move,
   };
 
   if (winner === null) {
     const legal = generateLegalMoves(next);
     if (legal.length === 0) {
-      next.winner = nextTurn === 1 ? -1 : 1; // Quem não tem movimentos perde
+      next.winner = nextTurn === 1 ? -1 : 1;
     } else {
       next.legalMoves = legal;
     }
   }
-  
   return next;
 }

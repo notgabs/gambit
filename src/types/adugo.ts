@@ -1,28 +1,26 @@
-// 0 = Ponto vazio
-// 1 = Onça
-// -1 = Cachorro (Lobo)
-export type AdugoCell = 0 | 1 | -1;
+export type AdugoBoard = number[]; // 31 posições: 1 (Onça), -1 (Cães), 0 (Vazio)
 
-// O tabuleiro tem 31 posições indexadas de 0 a 30.
-export type AdugoBoard = AdugoCell[];
-
-// O movimento consiste na posição de origem e destino
 export interface AdugoMove {
   from: number;
   to: number;
-  capture?: number; // Se a onça pular, registra qual nó (cachorro) foi capturado
+  capture?: number;
 }
 
 export interface AdugoRules {
-  maxCapturesToWin: number; // Padrão: 5
+  maxCapturesToWin: number;
+  drawAfterRepetitions: number;
+  drawAfterPliesWithoutCapture: number;
 }
 
 export interface AdugoState {
   board: AdugoBoard;
-  turn: 1 | -1;            // 1 = Onça, -1 = Cachorros
-  winner: 1 | -1 | 0 | null; // 0 = Empate, null = Jogo rolando
+  turn: 1 | -1;
+  winner: 1 | -1 | 0 | null; // 0 = Empate
   dogsCaptured: number;
   legalMoves: AdugoMove[];
-  history: string[];       // Histórico para detectar empate por repetição
+  history: string[];
   rules: AdugoRules;
+  pliesPlayed: number;
+  pliesWithoutCapture: number;
+  lastMove?: AdugoMove;
 }

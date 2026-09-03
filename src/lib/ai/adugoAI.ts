@@ -3,39 +3,35 @@ import { generateLegalMoves, applyMove, ADJ, LINES } from '@/lib/engine/adugo';
 
 export type AdugoDifficulty = 'facil' | 'medio' | 'dificil';
 
-// Matriz de distâncias curtas no grafo (Floyd-Warshall)
+// Grafo Distâncias (Floyd-Warshall)
 const DIST: number[][] = Array(31).fill(0).map(() => Array(31).fill(99));
 for (let i = 0; i < 31; i++) DIST[i][i] = 0;
-for (const [u, v] of LINES) {
-  DIST[u][v] = 1;
-  DIST[v][u] = 1;
-}
+for (const [u, v] of LINES) { DIST[u][v] = 1; DIST[v][u] = 1; }
 for (let k = 0; k < 31; k++) {
   for (let i = 0; i < 31; i++) {
     for (let j = 0; j < 31; j++) {
-      if (DIST[i][j] > DIST[i][k] + DIST[k][j]) {
-        DIST[i][j] = DIST[i][k] + DIST[k][j];
-      }
+      if (DIST[i][j] > DIST[i][k] + DIST[k][j]) DIST[i][j] = DIST[i][k] + DIST[k][j];
     }
   }
 }
 
 const JAGUAR_PST = [
-  20, 30, 30, 30, 20,
-  30, 50, 60, 50, 30,
-  30, 60, 100, 60, 30, // Centro
-  30, 50, 60, 50, 30,
-  20, 30, 30, 30, 20,
-  10, 10, 10,
-   5,  5,
-   0
+  10, 20, 20, 20, 10,
+  20, 40, 50, 40, 20,
+  20, 50,100, 50, 20, // Centro valioso
+  20, 40, 50, 40, 20,
+  10, 20, 20, 20, 10,
+   5, 10,  5,
+   0,  5,  0
 ];
 
-export function evaluateAdugo(state: AdugoState, originalPlayer: 1 | -1): number {
-  const { board, dogsCaptured, winner, history } = state;
+// Always return score from Jaguar's (1) perspective
+export function evaluateAdugo(state: AdugoState): number {
+  const { board, dogsCaptured, winner, pliesWithoutCapture } = state;
 
-  if (winner === 1) return originalPlayer === 1 ? 100000 : -100000;
-  if (winner === -1) return originalPlayer === -1 ? 100000 : -100000;
+  if (winner === 1) return 100000;
+  if (winner === -1) return -100000;
+  if (winner === 0) return 0; // Draw is neutral
 
   let jaguarPos = -1;
   const dogPositions: number[] = [];
@@ -45,71 +41,49 @@ export function evaluateAdugo(state: AdugoState, originalPlayer: 1 | -1): number
     else if (board[i] === -1) dogPositions.push(i);
   }
 
-  let score = dogsCaptured * 6000;
+  let score = dogsCaptured * 8000;
+  score -= pliesWithoutCapture * 5; 
 
   if (jaguarPos !== -1) {
-    score += JAGUAR_PST[jaguarPos] || 0;
+    score += JAGUAR_PST[jaguarPos];
 
-    const jaguarMovesCount = countJaguarMoves(board, jaguarPos);
-    score += jaguarMovesCount * 400;
-
-    if (jaguarMovesCount <= 2) {
-      score -= (3 - jaguarMovesCount) * 2000;
+    let jaguarMobility = 0;
+    let vulnerableDogs = 0;
+    for (const dest of ADJ[jaguarPos]) {
+      if (board[dest] === 0) jaguarMobility++;
+      if (board[dest] === -1) {
+        for (const jumpDest of ADJ[dest]) {
+          if (jumpDest !== jaguarPos && board[jumpDest] === 0) {
+            vulnerableDogs++;
+          }
+        }
+      }
     }
 
-    const vulnerableDogs = countVulnerableDogs(board, jaguarPos);
-    score += vulnerableDogs * 1500;
+    score += jaguarMobility * 500;
+    if (jaguarMobility <= 1) score -= 3000; // Almost trapped
+    score += vulnerableDogs * 2500;
 
     let dogDistSum = 0;
     let dogsSurrounding = 0;
-
     for (const dog of dogPositions) {
       const d = DIST[dog][jaguarPos];
       dogDistSum += d;
       if (d === 1) dogsSurrounding++;
     }
 
-    score -= dogDistSum * 50;
-    score -= dogsSurrounding * 800;
+    score += dogDistSum * 40; 
+    score -= dogsSurrounding * 600; 
   }
 
-  // ⚡ PENALIDADE DE REPETIÇÃO (Evita o loop infinito de 2 movimentos)
-  if (history && history.length > 2) {
-    const currentKey = board.join('');
-    let occurrences = 0;
-    for (const h of history) {
-      if (h === currentKey) occurrences++;
-    }
-    if (occurrences > 1) {
-      score -= 8000; // Penaliza fortemente repetir posições já visitadas
-    }
-  }
-
-  return originalPlayer === 1 ? score : -score;
+  return score;
 }
 
-function countJaguarMoves(board: AdugoBoard, jaguarPos: number): number {
-  if (jaguarPos === -1) return 0;
-  let count = 0;
-  for (const dest of ADJ[jaguarPos]) {
-    if (board[dest] === 0) count++;
-  }
-  return count;
-}
+// Transposition Table
+const tt = new Map<string, { depth: number, score: number, flag: 'EXACT' | 'LOWER' | 'UPPER' }>();
 
-function countVulnerableDogs(board: AdugoBoard, jaguarPos: number): number {
-  if (jaguarPos === -1) return 0;
-  let count = 0;
-  for (const victim of ADJ[jaguarPos]) {
-    if (board[victim] === -1) {
-      for (const dest of ADJ[victim]) {
-        if (dest !== jaguarPos && board[dest] === 0) {
-          count++;
-        }
-      }
-    }
-  }
-  return count;
+export function clearAdugoTT() {
+  tt.clear();
 }
 
 export function minimaxAdugo(
@@ -118,19 +92,34 @@ export function minimaxAdugo(
   alpha: number,
   beta: number,
   startTime: number,
-  timeBudget: number,
-  originalPlayer: 1 | -1
+  timeBudget: number
 ): { move: AdugoMove | null; score: number } {
   if (timeBudget > 0 && performance.now() - startTime > timeBudget) {
-    return { move: null, score: 0 };
+    return { move: null, score: 0 }; 
+  }
+
+  const ttKey = state.board.join('') + state.turn;
+  const ttEntry = tt.get(ttKey);
+  if (ttEntry && ttEntry.depth >= depth) {
+    if (ttEntry.flag === 'EXACT') return { move: null, score: ttEntry.score };
+    if (ttEntry.flag === 'LOWER') alpha = Math.max(alpha, ttEntry.score);
+    else if (ttEntry.flag === 'UPPER') beta = Math.min(beta, ttEntry.score);
+    if (alpha >= beta) return { move: null, score: ttEntry.score };
   }
 
   const legalMoves = state.legalMoves.length > 0 ? state.legalMoves : generateLegalMoves(state);
 
-  if (depth === 0 || state.winner !== null || legalMoves.length === 0) {
-    return { move: null, score: evaluateAdugo(state, originalPlayer) };
+  // Quiescence extension
+  let currentDepth = depth;
+  if (currentDepth === 0 && state.turn === 1 && legalMoves.some(m => m.capture !== undefined)) {
+    currentDepth = 1;
   }
 
+  if (currentDepth === 0 || state.winner !== null || legalMoves.length === 0) {
+    return { move: null, score: evaluateAdugo(state) };
+  }
+
+  // Move ordering
   const orderedMoves = [...legalMoves].sort((a, b) => {
     const aCap = a.capture !== undefined ? 100 : 0;
     const bCap = b.capture !== undefined ? 100 : 0;
@@ -138,36 +127,29 @@ export function minimaxAdugo(
   });
 
   let bestMove: AdugoMove | null = orderedMoves[0] || null;
-  const isMaximizing = state.turn === originalPlayer;
+  const isMaximizing = state.turn === 1; // Jaguar maximizes
   let bestScore = isMaximizing ? -Infinity : Infinity;
+  let alphaOrig = alpha;
 
   for (const move of orderedMoves) {
     const nextState = applyMove(state, move);
-    const { score } = minimaxAdugo(
-      nextState,
-      depth - 1,
-      alpha,
-      beta,
-      startTime,
-      timeBudget,
-      originalPlayer
-    );
+    const { score } = minimaxAdugo(nextState, currentDepth - 1, alpha, beta, startTime, timeBudget);
 
     if (isMaximizing) {
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
-      }
+      if (score > bestScore) { bestScore = score; bestMove = move; }
       alpha = Math.max(alpha, bestScore);
     } else {
-      if (score < bestScore) {
-        bestScore = score;
-        bestMove = move;
-      }
+      if (score < bestScore) { bestScore = score; bestMove = move; }
       beta = Math.min(beta, bestScore);
     }
-
     if (beta <= alpha) break;
+  }
+
+  if (timeBudget <= 0 || performance.now() - startTime <= timeBudget) {
+    let flag: 'EXACT' | 'LOWER' | 'UPPER' = 'EXACT';
+    if (bestScore <= alphaOrig) flag = 'UPPER';
+    else if (bestScore >= beta) flag = 'LOWER';
+    tt.set(ttKey, { depth: currentDepth, score: bestScore, flag });
   }
 
   return { move: bestMove, score: bestScore };

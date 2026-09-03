@@ -131,6 +131,14 @@ export default async function ManualPage({ params }: { params: Promise<{ id: str
                       <p className="text-sm font-bold text-[#3a2218]/80">Encurralarem a Onça. Se chegar a vez da Onça e ela não tiver <strong className="text-[#4a8b54]">nenhum movimento legal</strong> (presa), a matilha ganha.</p>
                     </div>
                   </div>
+
+                  <div className="flex items-start gap-3 bg-[#fdf8ef] border-2 border-[#3a2218] p-3 rounded-lg shadow-[2px_2px_0px_#3a2218]">
+                    <div className="w-10 h-10 rounded-full bg-white border-[3px] border-[#3a2218] flex items-center justify-center text-xl shrink-0">⚖️</div>
+                    <div>
+                      <h4 className="font-black text-[#3a2218] uppercase">Empate (Partida Estagnou):</h4>
+                      <p className="text-sm font-bold text-[#3a2218]/80">O jogo empata se a mesma posição no tabuleiro se repetir <strong className="text-[#e11d48]">3 vezes</strong> ou se passarem <strong className="text-[#e11d48]">60 lances sem nenhuma captura</strong>.</p>
+                    </div>
+                  </div>
                 </div>
               </section>
 

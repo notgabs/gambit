@@ -1,37 +1,30 @@
-import { AdugoState, AdugoMove } from '@/types/adugo';
-import { minimaxAdugo, AdugoDifficulty } from './adugoAI';
-import { generateLegalMoves } from '@/lib/engine/adugo';
+import type { AdugoState, AdugoMove } from '@/types/adugo';
+import type { AdugoDifficulty } from './adugoAI';
 
-const SETTINGS: Record<AdugoDifficulty, { maxDepth: number; budget: number }> = {
-  facil: { maxDepth: 2, budget: 200 },
-  medio: { maxDepth: 4, budget: 500 },
-  dificil: { maxDepth: 6, budget: 1000 },
-};
+let worker: Worker | null = null;
 
-export async function askAdugoAI(
-  state: AdugoState,
-  difficulty: AdugoDifficulty
-): Promise<AdugoMove | null> {
-  const legal = state.legalMoves.length > 0 ? state.legalMoves : generateLegalMoves(state);
-  if (!legal.length) return null;
-
-  // Nível Fácil: Escolhe um lance aleatório com 40% de chance de jogada inteligente
-  if (difficulty === 'facil' && Math.random() > 0.4) {
-    const captures = legal.filter(m => m.capture !== undefined);
-    if (captures.length > 0) return captures[Math.floor(Math.random() * captures.length)];
-    return legal[Math.floor(Math.random() * legal.length)];
+export function resetAdugoAI() {
+  if (worker) {
+    worker.postMessage({ type: 'CLEAR' });
   }
+}
 
-  const { maxDepth, budget } = SETTINGS[difficulty];
-  const startTime = performance.now();
-  let bestMove: AdugoMove | null = legal[0];
+export function askAdugoAI(state: AdugoState, difficulty: AdugoDifficulty): Promise<AdugoMove> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') return;
+    
+    if (!worker) {
+      worker = new Worker(new URL('./adugo.worker.ts', import.meta.url));
+    }
 
-  // Iterative Deepening
-  for (let d = 1; d <= maxDepth; d++) {
-    const { move } = minimaxAdugo(state, d, -Infinity, Infinity, startTime, budget, state.turn);
-    if (move) bestMove = move;
-    if (performance.now() - startTime > budget) break;
-  }
+    const handler = (e: MessageEvent) => {
+      if (e.data.type === 'RESULT') {
+        worker?.removeEventListener('message', handler);
+        resolve(e.data.move);
+      }
+    };
 
-  return bestMove;
+    worker.addEventListener('message', handler);
+    worker.postMessage({ type: 'MOVE', state, difficulty });
+  });
 }
