@@ -20,59 +20,170 @@ export function newSurakartaGame(): SurakartaState {
 }
 
 /**
- * Coordenadas dos nós do tabuleiro em % da viewBox (0-100).
- * Margem de 20 em cada borda + espaçamento de 12 entre linhas.
- * Isso garante que o loop grande (raio 24) nunca "estoure" para
- * coordenadas negativas nos cantos (o bug do círculo cortado).
+ * Geometria do tabuleiro:
+ * - MARGIN: distância da borda do SVG (0-100) até a primeira linha da grade.
+ * - STEP: espaçamento entre linhas/colunas.
  *
- * ⚠️ Única fonte de verdade — importe isso no componente, não duplique.
+ * Regra para os loops NUNCA cortarem no canto: MARGIN >= 2 * STEP
+ * (o loop grande tem raio 2*STEP e fica centrado exatamente no canto).
+ * 25 >= 2*10 = 20 ✅ (com folga de 5 unidades).
  */
-export const BOARD_POINTS = [20, 32, 44, 56, 68, 80];
+const MARGIN = 25;
+const STEP = 10;
 
-// Simulador de Ray Tracing para os loops
-function getNextRayState(x: number, y: number, dx: number, dy: number): { x: number, y: number, dx: number, dy: number, arc?: string } | null {
-  const key = `${x},${y},${dx},${dy}`;
+export const BOARD_POINTS = [0, 1, 2, 3, 4, 5].map(i => MARGIN + i * STEP); // [25,35,45,55,65,75]
+export const LOOP_RADIUS_SMALL = STEP;       // 10
+export const LOOP_RADIUS_LARGE = STEP * 2;   // 20
 
-  const loops: Record<string, {x:number, y:number, dx:number, dy:number, arc: string}> = {
-    // TL
-    "0,1,-1,0": { x: 1, y: 0, dx: 0, dy: 1, arc: "A 12 12 0 1 1 32 20" },
-    "1,0,0,-1": { x: 0, y: 1, dx: 1, dy: 0, arc: "A 12 12 0 1 0 20 32" },
-    "0,2,-1,0": { x: 2, y: 0, dx: 0, dy: 1, arc: "A 24 24 0 1 1 44 20" },
-    "2,0,0,-1": { x: 0, y: 2, dx: 1, dy: 0, arc: "A 24 24 0 1 0 20 44" },
+const ARC_SAMPLE_STEPS = 10;
 
-    // TR
-    "5,1,1,0":  { x: 4, y: 0, dx: 0, dy: 1, arc: "A 12 12 0 1 0 68 20" },
-    "4,0,0,-1": { x: 5, y: 1, dx: -1, dy: 0, arc: "A 12 12 0 1 1 80 32" },
-    "5,2,1,0":  { x: 3, y: 0, dx: 0, dy: 1, arc: "A 24 24 0 1 0 56 20" },
-    "3,0,0,-1": { x: 5, y: 2, dx: -1, dy: 0, arc: "A 24 24 0 1 1 80 44" },
+interface ArcInfo {
+  svg: string;
+  sample: (steps: number) => { x: number; y: number }[];
+}
 
-    // BL
-    "0,4,-1,0": { x: 1, y: 5, dx: 0, dy: -1, arc: "A 12 12 0 1 0 32 80" },
-    "1,5,0,1":  { x: 0, y: 4, dx: 1, dy: 0, arc: "A 12 12 0 1 1 20 68" },
-    "0,3,-1,0": { x: 2, y: 5, dx: 0, dy: -1, arc: "A 24 24 0 1 0 44 80" },
-    "2,5,0,1":  { x: 0, y: 3, dx: 1, dy: 0, arc: "A 24 24 0 1 1 20 56" },
+/**
+ * Calcula o arco "longo" (270°) entre dois pontos de um círculo já
+ * conhecido (centro + raio), retornando o comando SVG e uma função
+ * de amostragem de pontos intermediários (usada na animação).
+ */
+function computeArc(cx: number, cy: number, r: number, x0: number, y0: number, x1: number, y1: number): ArcInfo {
+  const TWO_PI = Math.PI * 2;
+  let a0 = Math.atan2(y0 - cy, x0 - cx);
+  let a1 = Math.atan2(y1 - cy, x1 - cx);
+  a0 = (a0 + TWO_PI) % TWO_PI;
+  a1 = (a1 + TWO_PI) % TWO_PI;
 
-    // BR
-    "5,4,1,0":  { x: 4, y: 5, dx: 0, dy: -1, arc: "A 12 12 0 1 1 68 80" },
-    "4,5,0,1":  { x: 5, y: 4, dx: -1, dy: 0, arc: "A 12 12 0 1 0 80 68" },
-    "5,3,1,0":  { x: 3, y: 5, dx: 0, dy: -1, arc: "A 24 24 0 1 1 56 80" },
-    "3,5,0,1":  { x: 5, y: 3, dx: -1, dy: 0, arc: "A 24 24 0 1 0 80 56" },
+  let diff = a1 - a0;
+  while (diff > Math.PI) diff -= TWO_PI;
+  while (diff <= -Math.PI) diff += TWO_PI;
+  // Sempre queremos o caminho LONGO (>180°), não o curto
+  const longDiff = diff > 0 ? diff - TWO_PI : diff + TWO_PI;
+  const sweepFlag = longDiff > 0 ? 1 : 0;
+
+  return {
+    svg: `A ${r} ${r} 0 1 ${sweepFlag} ${x1} ${y1}`,
+    sample: (steps: number) => {
+      const pts: { x: number; y: number }[] = [];
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const angle = a0 + longDiff * t;
+        pts.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+      }
+      return pts;
+    },
+  };
+}
+
+interface RayTransition {
+  x: number; y: number; dx: number; dy: number;
+  arcSvg: string;
+  arcSample: (steps: number) => { x: number; y: number }[];
+}
+
+function buildLoopMap(): Record<string, RayTransition> {
+  const P = BOARD_POINTS;
+  const map: Record<string, RayTransition> = {};
+
+  const pair = (
+    keyA: string, nextA: Omit<RayTransition, 'arcSvg' | 'arcSample'>,
+    keyB: string, nextB: Omit<RayTransition, 'arcSvg' | 'arcSample'>,
+    cx: number, cy: number, r: number,
+    ax: number, ay: number, bx: number, by: number
+  ) => {
+    const ab = computeArc(cx, cy, r, ax, ay, bx, by);
+    const ba = computeArc(cx, cy, r, bx, by, ax, ay);
+    map[keyA] = { ...nextA, arcSvg: ab.svg, arcSample: ab.sample };
+    map[keyB] = { ...nextB, arcSvg: ba.svg, arcSample: ba.sample };
   };
 
-  if (loops[key]) return loops[key];
+  const S = LOOP_RADIUS_SMALL;
+  const L = LOOP_RADIUS_LARGE;
+
+  // Canto Superior-Esquerdo (centro em P[0],P[0])
+  pair("0,1,-1,0", { x: 1, y: 0, dx: 0, dy: 1 }, "1,0,0,-1", { x: 0, y: 1, dx: 1, dy: 0 },
+    P[0], P[0], S, P[0], P[1], P[1], P[0]);
+  pair("0,2,-1,0", { x: 2, y: 0, dx: 0, dy: 1 }, "2,0,0,-1", { x: 0, y: 2, dx: 1, dy: 0 },
+    P[0], P[0], L, P[0], P[2], P[2], P[0]);
+
+  // Canto Superior-Direito (centro em P[5],P[0])
+  pair("5,1,1,0", { x: 4, y: 0, dx: 0, dy: 1 }, "4,0,0,-1", { x: 5, y: 1, dx: -1, dy: 0 },
+    P[5], P[0], S, P[5], P[1], P[4], P[0]);
+  pair("5,2,1,0", { x: 3, y: 0, dx: 0, dy: 1 }, "3,0,0,-1", { x: 5, y: 2, dx: -1, dy: 0 },
+    P[5], P[0], L, P[5], P[2], P[3], P[0]);
+
+  // Canto Inferior-Esquerdo (centro em P[0],P[5])
+  pair("0,4,-1,0", { x: 1, y: 5, dx: 0, dy: -1 }, "1,5,0,1", { x: 0, y: 4, dx: 1, dy: 0 },
+    P[0], P[5], S, P[0], P[4], P[1], P[5]);
+  pair("0,3,-1,0", { x: 2, y: 5, dx: 0, dy: -1 }, "2,5,0,1", { x: 0, y: 3, dx: 1, dy: 0 },
+    P[0], P[5], L, P[0], P[3], P[2], P[5]);
+
+  // Canto Inferior-Direito (centro em P[5],P[5])
+  pair("5,4,1,0", { x: 4, y: 5, dx: 0, dy: -1 }, "4,5,0,1", { x: 5, y: 4, dx: -1, dy: 0 },
+    P[5], P[5], S, P[5], P[4], P[4], P[5]);
+  pair("5,3,1,0", { x: 3, y: 5, dx: 0, dy: -1 }, "3,5,0,1", { x: 5, y: 3, dx: -1, dy: 0 },
+    P[5], P[5], L, P[5], P[3], P[3], P[5]);
+
+  return map;
+}
+
+const LOOP_MAP = buildLoopMap();
+
+interface NextRayResult {
+  x: number; y: number; dx: number; dy: number;
+  arcSample?: (steps: number) => { x: number; y: number }[];
+}
+
+function getNextRayState(x: number, y: number, dx: number, dy: number): NextRayResult | null {
+  const key = `${x},${y},${dx},${dy}`;
+  const t = LOOP_MAP[key];
+  if (t) return t;
 
   const nx = x + dx;
   const ny = y + dy;
   if (nx >= 0 && nx <= 5 && ny >= 0 && ny <= 5) {
     return { x: nx, y: ny, dx, dy };
   }
-
   return null;
+}
+
+/**
+ * Retorna os 8 loops decorativos prontos (path SVG completo),
+ * usados pelo componente para desenhar o fundo do tabuleiro.
+ * Única fonte de verdade — garante que o desenho visual sempre
+ * bata exatamente com a geometria usada na lógica do jogo.
+ */
+export interface DecorativeLoop {
+  path: string;
+  size: 'small' | 'large';
+}
+
+export function getDecorativeLoops(): DecorativeLoop[] {
+  const P = BOARD_POINTS;
+  const S = LOOP_RADIUS_SMALL;
+  const L = LOOP_RADIUS_LARGE;
+
+  const arc = (cx: number, cy: number, r: number, x0: number, y0: number, x1: number, y1: number) => {
+    const a = computeArc(cx, cy, r, x0, y0, x1, y1);
+    return `M ${x0} ${y0} ${a.svg}`;
+  };
+
+  return [
+    { path: arc(P[0], P[0], S, P[0], P[1], P[1], P[0]), size: 'small' },
+    { path: arc(P[0], P[0], L, P[0], P[2], P[2], P[0]), size: 'large' },
+    { path: arc(P[5], P[0], S, P[5], P[1], P[4], P[0]), size: 'small' },
+    { path: arc(P[5], P[0], L, P[5], P[2], P[3], P[0]), size: 'large' },
+    { path: arc(P[0], P[5], S, P[0], P[4], P[1], P[5]), size: 'small' },
+    { path: arc(P[0], P[5], L, P[0], P[3], P[2], P[5]), size: 'large' },
+    { path: arc(P[5], P[5], S, P[5], P[4], P[4], P[5]), size: 'small' },
+    { path: arc(P[5], P[5], L, P[5], P[3], P[3], P[5]), size: 'large' },
+  ];
 }
 
 export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
   const moves: SurakartaMove[] = [];
   const { board, turn } = state;
+  const P = BOARD_POINTS;
 
   for (let y = 0; y < 6; y++) {
     for (let x = 0; x < 6; x++) {
@@ -102,46 +213,46 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
         let loopsTraversed = 0;
         let steps = 0;
 
-        // Cada passo do "raio" vira um waypoint, com seu próprio
-        // trecho de path. Isso permite separar depois o trajeto
-        // (rail) do salto final.
-        const waypoints: { x: number; y: number; segment: string }[] = [];
+        // Pontos reais (%) do trajeto, começando na posição de origem
+        const points: { x: number; y: number }[] = [{ x: P[x], y: P[y] }];
+        let lastStepWasArc = false;
+        let lastStepFromGrid = { x, y };
 
         while (steps < 50) {
-          const nextState = getNextRayState(currX, currY, dx, dy);
-          if (!nextState) break;
+          const next = getNextRayState(currX, currY, dx, dy);
+          if (!next) break;
 
-          const isLoop = (nextState.x !== currX + dx) || (nextState.y !== currY + dy);
-          if (isLoop) loopsTraversed++;
+          const isLoop = (next.x !== currX + dx) || (next.y !== currY + dy);
+          lastStepFromGrid = { x: currX, y: currY };
 
-          const segment = isLoop && nextState.arc
-            ? ` ${nextState.arc}`
-            : ` L ${BOARD_POINTS[nextState.x]} ${BOARD_POINTS[nextState.y]}`;
+          if (isLoop && next.arcSample) {
+            loopsTraversed++;
+            points.push(...next.arcSample(ARC_SAMPLE_STEPS));
+            lastStepWasArc = true;
+          } else {
+            points.push({ x: P[next.x], y: P[next.y] });
+            lastStepWasArc = false;
+          }
 
-          waypoints.push({ x: nextState.x, y: nextState.y, segment });
-
-          currX = nextState.x;
-          currY = nextState.y;
-          dx = nextState.dx;
-          dy = nextState.dy;
+          currX = next.x;
+          currY = next.y;
+          dx = next.dx;
+          dy = next.dy;
           steps++;
 
           if (board[currY][currX] !== 0) {
             if (board[currY][currX] !== turn && loopsTraversed > 0) {
-              const lastWaypoint = waypoints[waypoints.length - 1];
-              const lastIsStraight = lastWaypoint.segment.trim().startsWith('L');
+              let slidePoints = points;
+              const hasFinalHop = !lastStepWasArc;
+              let preCaptureX = currX;
+              let preCaptureY = currY;
 
-              // Se o último passo é reto, ele vira o "salto" e sai do rail.
-              // Se o último passo é a saída de um loop, mantemos ele no rail
-              // (sem salto), pra não cortar reto por cima do tabuleiro.
-              const railWaypoints = lastIsStraight ? waypoints.slice(0, -1) : waypoints;
-
-              const railPath = `M ${BOARD_POINTS[x]} ${BOARD_POINTS[y]}` +
-                railWaypoints.map(w => w.segment).join('');
-
-              const pre = railWaypoints.length > 0
-                ? railWaypoints[railWaypoints.length - 1]
-                : { x, y };
+              if (hasFinalHop) {
+                // Remove o ponto final (reto) do deslize — ele vira o "salto"
+                slidePoints = points.slice(0, -1);
+                preCaptureX = lastStepFromGrid.x;
+                preCaptureY = lastStepFromGrid.y;
+              }
 
               moves.push({
                 fromX: x,
@@ -149,11 +260,10 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
                 toX: currX,
                 toY: currY,
                 isCapture: true,
-                railPath,
-                railSteps: railWaypoints.length,
-                preCaptureX: lastIsStraight ? pre.x : currX,
-                preCaptureY: lastIsStraight ? pre.y : currY,
-                hasFinalHop: lastIsStraight,
+                slidePoints,
+                hasFinalHop,
+                preCaptureX,
+                preCaptureY,
               });
             }
             break;

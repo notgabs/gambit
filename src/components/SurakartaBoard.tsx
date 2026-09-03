@@ -2,15 +2,44 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, RotateCcw, Trophy, AlertTriangle } from 'lucide-react';
-import { newSurakartaGame, applyMove, generateLegalMoves, BOARD_POINTS } from '@/lib/engine/surakarta';
+import {
+  newSurakartaGame,
+  applyMove,
+  generateLegalMoves,
+  getDecorativeLoops,
+  BOARD_POINTS,
+} from '@/lib/engine/surakarta';
 import type { SurakartaState, SurakartaMove } from '@/types/surakarta';
 
-// Duração do "salto" final da captura (em segundos)
-const JUMP_DURATION = 0.42;
+const JUMP_DURATION = 0.4;          // duração do salto final (s)
+const SPEED_FACTOR = 0.012;         // segundos por "unidade de distância" no deslize
+const MIN_SLIDE_DURATION = 0.35;
 
-// Duração do deslize proporcional ao tamanho do trajeto percorrido
-const getSlideDuration = (move: SurakartaMove) =>
-  Math.max(0.35, (move.railSteps ?? 1) * 0.22);
+function computeTimes(points: { x: number; y: number }[]): number[] {
+  if (points.length <= 1) return [0, 1];
+  const acc = [0];
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    total += Math.sqrt(dx * dx + dy * dy);
+    acc.push(total);
+  }
+  if (total === 0) return points.map((_, i) => i / (points.length - 1));
+  return acc.map(d => d / total);
+}
+
+function computeTotalDistance(points: { x: number; y: number }[]): number {
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i].x - points[i - 1].x;
+    const dy = points[i].y - points[i - 1].y;
+    total += Math.sqrt(dx * dx + dy * dy);
+  }
+  return total;
+}
+
+const DECORATIVE_LOOPS = getDecorativeLoops();
 
 export default function SurakartaBoard() {
   const [state, setState] = useState<SurakartaState>(() => newSurakartaGame());
@@ -56,10 +85,22 @@ export default function SurakartaBoard() {
     return s;
   }, [legalMoves]);
 
+  const slideInfo = useMemo(() => {
+    if (!pendingMove?.slidePoints || pendingMove.slidePoints.length === 0) return null;
+    const points = pendingMove.slidePoints;
+    const distance = computeTotalDistance(points);
+    const duration = Math.max(MIN_SLIDE_DURATION, distance * SPEED_FACTOR);
+    const times = computeTimes(points);
+    return { points, duration, times };
+  }, [pendingMove]);
+
   const runCapture = (move: SurakartaMove) => {
     setSelected(null);
     setPendingMove(move);
-    const slideDuration = getSlideDuration(move);
+
+    const points = move.slidePoints ?? [];
+    const distance = computeTotalDistance(points);
+    const slideDuration = Math.max(MIN_SLIDE_DURATION, distance * SPEED_FACTOR);
 
     const finish = () => {
       setState(s => applyMove(s, move));
@@ -67,22 +108,20 @@ export default function SurakartaBoard() {
       setAnimPhase(null);
     };
 
+    const hasSlide = points.length > 1;
+
     if (move.hasFinalHop) {
-      if ((move.railSteps ?? 0) > 0) {
-        // Fase 1: desliza pelos trilhos/loops até ficar "na frente" do alvo
+      if (hasSlide) {
         setAnimPhase('slide');
         slideTimeoutRef.current = setTimeout(() => {
-          // Fase 2: salta e captura
           setAnimPhase('jump');
           jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
         }, slideDuration * 1000);
       } else {
-        // Caso raro: captura sem trecho de deslize, só o salto
         setAnimPhase('jump');
         jumpTimeoutRef.current = setTimeout(finish, JUMP_DURATION * 1000);
       }
     } else {
-      // A captura termina saindo de um loop: desliza até o fim, sem salto reto
       setAnimPhase('slide');
       slideTimeoutRef.current = setTimeout(finish, slideDuration * 1000);
     }
@@ -147,37 +186,41 @@ export default function SurakartaBoard() {
               </React.Fragment>
             ))}
 
-            {/* Loops pequenos — roxo */}
-            <path d="M 20 32 A 12 12 0 1 1 32 20" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 68 20 A 12 12 0 1 1 80 32" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 32 80 A 12 12 0 1 1 20 68" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 80 68 A 12 12 0 1 1 68 80" fill="none" stroke="#9333ea" strokeWidth="1.8" strokeLinecap="round" />
-
-            {/* Loops grandes — rosa */}
-            <path d="M 20 44 A 24 24 0 1 1 44 20" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 56 20 A 24 24 0 1 1 80 44" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 44 80 A 24 24 0 1 1 20 56" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
-            <path d="M 80 56 A 24 24 0 1 1 56 80" fill="none" stroke="#ec4899" strokeWidth="1.8" strokeLinecap="round" />
-
-            {/* Fase 1: deslize pelos trilhos/loops */}
-            {pendingMove && animPhase === 'slide' && pendingMove.railPath && (
-              <g>
-                <path id="capturePath" d={pendingMove.railPath} fill="none" stroke="transparent" />
-                <circle r="4" fill={movingColor} stroke="#3a2218" strokeWidth="0.8">
-                  <animateMotion
-                    dur={`${getSlideDuration(pendingMove)}s`}
-                    repeatCount="1"
-                    fill="freeze"
-                    calcMode="linear"
-                  >
-                    <mpath href="#capturePath" />
-                  </animateMotion>
-                </circle>
-              </g>
-            )}
+            {DECORATIVE_LOOPS.map((loop, i) => (
+              <path
+                key={`loop-${i}`}
+                d={loop.path}
+                fill="none"
+                stroke={loop.size === 'small' ? '#9333ea' : '#ec4899'}
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            ))}
           </svg>
 
-          {/* Fase 2: salto final da captura (DOM, fora do SVG) */}
+          {/* Fase 1: deslize pelos trilhos/loops (Framer Motion, sem SMIL) */}
+          {pendingMove && animPhase === 'slide' && slideInfo && (
+            <motion.div
+              key={`slide-${pendingMove.fromX}-${pendingMove.fromY}-${pendingMove.toX}-${pendingMove.toY}-${state.history.length}`}
+              className="absolute z-30 h-7 w-7 md:h-8 md:w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-[#3a2218] shadow-md pointer-events-none"
+              style={{ backgroundColor: movingColor }}
+              initial={{
+                left: `${slideInfo.points[0].x}%`,
+                top: `${slideInfo.points[0].y}%`,
+              }}
+              animate={{
+                left: slideInfo.points.map(p => `${p.x}%`),
+                top: slideInfo.points.map(p => `${p.y}%`),
+              }}
+              transition={{
+                duration: slideInfo.duration,
+                times: slideInfo.times,
+                ease: 'linear',
+              }}
+            />
+          )}
+
+          {/* Fase 2: salto final da captura */}
           {pendingMove && animPhase === 'jump' && (
             <motion.div
               className="absolute z-30 -translate-x-1/2 -translate-y-1/2 pointer-events-none"

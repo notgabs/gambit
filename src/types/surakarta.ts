@@ -7,20 +7,13 @@ export interface SurakartaMove {
   toY: number;
   isCapture: boolean;
 
-  /** Caminho SVG (retas + arcos) do início até a casa ANTES do salto final. */
-  railPath?: string;
-  /** Quantidade de "passos" no railPath — usado para calcular a duração da animação. */
-  railSteps?: number;
-  /** Casa imediatamente antes da peça capturada (de onde parte o salto). */
+  /** Pontos (em % da viewBox 0-100) do trajeto de deslize, incluindo os arcos dos loops já amostrados em pequenos passos. */
+  slidePoints?: { x: number; y: number }[];
+  /** Se true, o último trecho é reto e vira um "salto" estilizado em vez de deslize. */
+  hasFinalHop?: boolean;
+  /** Casa de grade (índices 0-5) de onde parte o salto final. */
   preCaptureX?: number;
   preCaptureY?: number;
-  /**
-   * Se true, o último passo é uma reta simples e vira um "salto" estilizado.
-   * Se false, o último passo é a saída de um loop — nesse caso a peça
-   * apenas desliza até o fim (sem salto), para não cortar caminho reto
-   * por cima do tabuleiro.
-   */
-  hasFinalHop?: boolean;
 }
 
 export interface SurakartaState {
