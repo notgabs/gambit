@@ -163,20 +163,18 @@ export default function VintageLobby() {
                           <Play size={20} className="text-[#3a2218] opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>
 
-                        {selected.id !== 'surakarta' && (
-                          <button 
-                            onClick={() => selected.id === 'xadrez' 
-                              ? window.location.href = `/game/xadrez?mode=ai&difficulty=${difficulty}` 
-                              : setStep('MACHINE_RULES')}
-                            className="w-full flex items-center justify-between p-4 bg-[#3a2218] border-4 border-[#3a2218] rounded-xl hover:bg-black hover:-translate-y-1 transition-all shadow-[4px_4px_0px_#c49a6c] group"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Cpu size={24} className="text-[#fdf8ef]" />
-                              <span className="font-black text-[#fdf8ef] uppercase tracking-widest text-lg">Jogar vs IA</span>
-                            </div>
-                            <Play size={20} className="text-[#fdf8ef] opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </button>
-                        )}
+                        <button 
+                          onClick={() => selected.id === 'xadrez' 
+                            ? window.location.href = `/game/xadrez?mode=ai&difficulty=${difficulty}` 
+                            : setStep('MACHINE_RULES')}
+                          className="w-full flex items-center justify-between p-4 bg-[#3a2218] border-4 border-[#3a2218] rounded-xl hover:bg-black hover:-translate-y-1 transition-all shadow-[4px_4px_0px_#c49a6c] group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Cpu size={24} className="text-[#fdf8ef]" />
+                            <span className="font-black text-[#fdf8ef] uppercase tracking-widest text-lg">Jogar vs IA</span>
+                          </div>
+                          <Play size={20} className="text-[#fdf8ef] opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
 
                         <Link 
                           href={`/manual/${selected.id}`}

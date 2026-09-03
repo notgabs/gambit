@@ -1,7 +1,8 @@
 'use client';
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, RotateCcw, Trophy, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Trophy, AlertTriangle, Cpu } from 'lucide-react';
 import {
   newSurakartaGame,
   applyMove,
@@ -10,6 +11,7 @@ import {
   BOARD_POINTS,
 } from '@/lib/engine/surakarta';
 import type { SurakartaState, SurakartaMove } from '@/types/surakarta';
+import { askSurakartaAI, resetSurakartaAI } from '@/lib/ai/askSurakartaAI';
 
 const JUMP_DURATION = 0.4;          // duração do salto final (s)
 const SPEED_FACTOR = 0.012;         // segundos por "unidade de distância" no deslize
@@ -42,6 +44,12 @@ function computeTotalDistance(points: { x: number; y: number }[]): number {
 const DECORATIVE_LOOPS = getDecorativeLoops();
 
 export default function SurakartaBoard() {
+  const searchParams = useSearchParams();
+  const mode = searchParams.get('mode') === 'ai' ? 'ai' : 'offline';
+  const difficulty = searchParams.get('difficulty') || 'medio';
+  const humanPlayer = 1; // Brancas sempre (ou poderíamos parametrizar)
+  const aiPlayer = -1;
+
   const [state, setState] = useState<SurakartaState>(() => newSurakartaGame());
   const [selected, setSelected] = useState<{ x: number, y: number } | null>(null);
 
@@ -50,6 +58,29 @@ export default function SurakartaBoard() {
 
   const slideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const jumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gen = useRef(0);
+
+  const isThinking = mode === 'ai' && state.turn === aiPlayer && state.winner === null;
+
+  useEffect(() => {
+    if (!isThinking || animPhase !== null) return;
+    
+    let active = true;
+    const myGen = gen.current;
+
+    askSurakartaAI(state, difficulty).then(aiMove => {
+      if (!active || myGen !== gen.current) return;
+      if (aiMove) {
+        if (aiMove.isCapture) {
+          runCapture(aiMove);
+        } else {
+          setState(s => applyMove(s, aiMove));
+        }
+      }
+    });
+
+    return () => { active = false; };
+  }, [state, isThinking, animPhase, difficulty]);
 
   const clearAnimTimers = () => {
     if (slideTimeoutRef.current) clearTimeout(slideTimeoutRef.current);
@@ -59,6 +90,8 @@ export default function SurakartaBoard() {
   };
 
   const restart = () => {
+    gen.current++;
+    resetSurakartaAI();
     clearAnimTimers();
     setState(newSurakartaGame());
     setSelected(null);
@@ -128,7 +161,7 @@ export default function SurakartaBoard() {
   };
 
   const onNodeClick = (x: number, y: number) => {
-    if (state.winner !== null || animPhase !== null) return;
+    if (state.winner !== null || animPhase !== null || isThinking) return;
 
     const destKey = `${x},${y}`;
     if (selected !== null && destinations.has(destKey)) {
@@ -164,9 +197,16 @@ export default function SurakartaBoard() {
 
         <div className="flex flex-col items-center gap-1">
           <div className="flex items-center gap-2 rounded-full border-4 border-[#3a2218] bg-[#fdf8ef] px-4 py-1 shadow-[3px_3px_0_#3a2218]">
-            <span className="text-xs md:text-sm font-black uppercase tracking-widest text-[#3a2218]">
-              {state.turn === 1 ? 'Turno das Pretas' : 'Turno das Brancas'}
-            </span>
+            {isThinking ? (
+              <>
+                <Cpu size={16} className="text-[#c49a6c] animate-pulse" />
+                <span className="text-xs md:text-sm font-black uppercase tracking-widest text-[#c49a6c]">IA Pensando...</span>
+              </>
+            ) : (
+              <span className="text-xs md:text-sm font-black uppercase tracking-widest text-[#3a2218]">
+                {state.turn === 1 ? 'Turno das Pretas' : 'Turno das Brancas'}
+              </span>
+            )}
           </div>
         </div>
 

@@ -304,7 +304,7 @@ export function applyMove(state: SurakartaState, move: SurakartaMove): Surakarta
   if (newHistory.filter(h => h === historyKey).length >= 3) winner = 0;
   if (pliesWithoutCapture >= 60) winner = 0;
 
-  return {
+  let newState: SurakartaState = {
     ...state,
     board,
     turn: nextTurn,
@@ -312,4 +312,14 @@ export function applyMove(state: SurakartaState, move: SurakartaMove): Surakarta
     history: newHistory,
     pliesWithoutCapture
   };
+
+  if (newState.winner === null) {
+    const nextMoves = generateLegalMoves(newState);
+    if (nextMoves.length === 0) {
+      // Se o próximo jogador não tem movimentos, ele perde.
+      newState.winner = nextTurn === 1 ? -1 : 1;
+    }
+  }
+
+  return newState;
 }
