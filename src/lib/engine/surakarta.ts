@@ -335,8 +335,8 @@ export function applyMove(state: SurakartaState, move: SurakartaMove): Surakarta
   const historyKey = JSON.stringify(board) + nextTurn;
   const newHistory = [...state.history, historyKey];
 
-  if (newHistory.filter(h => h === historyKey).length >= 3) winner = 0;
-  if (pliesWithoutCapture >= 60) winner = 0;
+  if (winner === null && newHistory.filter(h => h === historyKey).length >= 3) winner = 0;
+  if (winner === null && pliesWithoutCapture >= 60) winner = 0;
 
   let newState: SurakartaState = {
     ...state,
