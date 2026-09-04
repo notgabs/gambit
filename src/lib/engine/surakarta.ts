@@ -259,10 +259,11 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
             const landing = trace[i + 1]; 
 
             if (landing) {
-              const totalLoops = loopsSoFar + (landing.isLoopCrossing ? 1 : 0);
               const landingEmpty = board[landing.y][landing.x] === 0;
 
-              if (totalLoops > 0 && landingEmpty) {
+              // REGRA: A peça TEM que ter passado por um loop na aproximação ("sempre saindo").
+              // O loop do pouso não serve para validar a captura se a aproximação foi reta.
+              if (loopsSoFar > 0 && landingEmpty) {
                 const before = i === 0 ? { x: P[x], y: P[y] } : { x: P[trace[i - 1].x], y: P[trace[i - 1].y] };
                 const railPoints = [{ x: P[x], y: P[y] }];
                 for (let k = 0; k < i; k++) {
