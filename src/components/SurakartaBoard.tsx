@@ -162,8 +162,9 @@ export default function SurakartaBoard() {
     const distance = computeTotalDistance(points);
     const duration = Math.max(MIN_HOP_DURATION, distance * HOP_SPEED_FACTOR);
     const times = computeTimes(points);
-    // Momento (0-1) em que a trajetória passa exatamente sobre a peça capturada (índice 1)
-    const impactRatio = times[1] ?? 0.5;
+    // Momento (0-1) em que a trajetória passa exatamente sobre a peça capturada
+    const captureIdx = pendingMove.captureIndexInHop ?? 1;
+    const impactRatio = times[captureIdx] ?? 0.5;
     const yOffsets = times.map(t => -JUMP_HEIGHT * Math.sin(Math.PI * t));
     return { points, duration, times, impactRatio, yOffsets };
   }, [pendingMove]);

@@ -273,10 +273,18 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
                   }
                 }
 
-                const hopPoints: { x: number; y: number }[] = [
-                  before,
-                  { x: P[step.x], y: P[step.y] }, 
-                ];
+                let captureIndexInHop = 1;
+                const hopPoints: { x: number; y: number }[] = [before];
+
+                if (step.isLoopCrossing && step.arcSample) {
+                  const arc = step.arcSample(ARC_SAMPLE_STEPS);
+                  hopPoints.push(...arc);
+                  captureIndexInHop = arc.length;
+                } else {
+                  hopPoints.push({ x: P[step.x], y: P[step.y] });
+                  captureIndexInHop = 1;
+                }
+
                 if (landing.isLoopCrossing && landing.arcSample) {
                   hopPoints.push(...landing.arcSample(ARC_SAMPLE_STEPS));
                 } else {
@@ -293,6 +301,7 @@ export function generateLegalMoves(state: SurakartaState): SurakartaMove[] {
                   capturedX: step.x,
                   capturedY: step.y,
                   hopPoints,
+                  captureIndexInHop,
                 });
               }
             }

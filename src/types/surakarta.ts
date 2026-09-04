@@ -20,6 +20,9 @@ export interface SurakartaMove {
    * Se o pouso ocorrer atravessando um loop, inclui os pontos do arco.
    */
   hopPoints: { x: number; y: number }[];
+
+  /** Índice no array hopPoints onde a peça capturada se encontra (para sincronizar o efeito de impacto) */
+  captureIndexInHop?: number;
 }
 
 export interface SurakartaState {
