@@ -260,12 +260,23 @@ export default function SurakartaBoard() {
         <div className="absolute inset-0 mx-auto rounded-2xl border-8 border-[#3a2218] bg-[#fdf8ef] shadow-[8px_8px_0_#3a2218] overflow-hidden" style={{ aspectRatio: '1/1', height: '100%' }}>
 
           <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {BOARD_POINTS.map((val, i) => (
-              <React.Fragment key={`grid-${i}`}>
-                <line x1={BOARD_POINTS[0]} y1={val} x2={BOARD_POINTS[5]} y2={val} stroke="#3a2218" strokeWidth="1.2" strokeLinecap="round" />
-                <line x1={val} y1={BOARD_POINTS[0]} x2={val} y2={BOARD_POINTS[5]} stroke="#3a2218" strokeWidth="1.2" strokeLinecap="round" />
-              </React.Fragment>
-            ))}
+            {BOARD_POINTS.map((val, i) => {
+              let strokeColor = "#3a2218"; // Bordas externas (marrom)
+              let strokeWidth = "1.2";
+              if (i === 1 || i === 4) {
+                strokeColor = "#9333ea"; // Circuito menor (roxo)
+                strokeWidth = "1.8";
+              } else if (i === 2 || i === 3) {
+                strokeColor = "#ec4899"; // Circuito maior (rosa)
+                strokeWidth = "1.8";
+              }
+              return (
+                <React.Fragment key={`grid-${i}`}>
+                  <line x1={BOARD_POINTS[0]} y1={val} x2={BOARD_POINTS[5]} y2={val} stroke={strokeColor} strokeWidth={strokeWidth} strokeLinecap="round" />
+                  <line x1={val} y1={BOARD_POINTS[0]} x2={val} y2={BOARD_POINTS[5]} stroke={strokeColor} strokeWidth={strokeWidth} strokeLinecap="round" />
+                </React.Fragment>
+              );
+            })}
 
             {DECORATIVE_LOOPS.map((loop, i) => (
               <path
