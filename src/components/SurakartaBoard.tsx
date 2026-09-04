@@ -261,13 +261,13 @@ export default function SurakartaBoard() {
 
           <svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
             {BOARD_POINTS.map((val, i) => {
-              let strokeColor = "#3a2218"; // Bordas externas (marrom)
+              let strokeColor = "#16a34a"; // Bordas externas (verde)
               let strokeWidth = "1.2";
               if (i === 1 || i === 4) {
-                strokeColor = "#9333ea"; // Circuito menor (roxo)
+                strokeColor = "#0ea5e9"; // Circuito menor (azul claro)
                 strokeWidth = "1.8";
               } else if (i === 2 || i === 3) {
-                strokeColor = "#ec4899"; // Circuito maior (rosa)
+                strokeColor = "#1d4ed8"; // Circuito maior (azul escuro)
                 strokeWidth = "1.8";
               }
               return (
@@ -283,7 +283,7 @@ export default function SurakartaBoard() {
                 key={`loop-${i}`}
                 d={loop.path}
                 fill="none"
-                stroke={loop.size === 'small' ? '#9333ea' : '#ec4899'}
+                stroke={loop.size === 'small' ? '#0ea5e9' : '#1d4ed8'}
                 strokeWidth="1.8"
                 strokeLinecap="round"
               />
