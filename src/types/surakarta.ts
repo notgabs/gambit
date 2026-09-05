@@ -1,4 +1,12 @@
 export type SurakartaPiece = 1 | -1 | 0;
+export type SurakartaPlayer = 1 | -1;
+
+export interface XY {
+  x: number;
+  y: number;
+}
+
+export type SurakartaEndReason = 'elimination' | 'stalemate' | 'repetition' | 'noCapture';
 
 export interface SurakartaMove {
   fromX: number;
@@ -7,28 +15,24 @@ export interface SurakartaMove {
   toY: number;
   isCapture: boolean;
 
-  /** Pontos (% da viewBox) do trajeto de deslize ATÉ a casa anterior à peça capturada. Ausente se não há rail antes do salto. */
-  slidePoints?: { x: number; y: number }[];
-
-  /** Coordenadas de grade (0-5) da peça que será removida do tabuleiro. */
+  /** Coordenadas da peça removida. Só em capturas. */
   capturedX?: number;
   capturedY?: number;
 
   /**
-   * Pontos (% da viewBox) do "salto": da casa anterior à peça capturada,
-   * passando por cima dela, até a casa de pouso (toX/toY).
-   * Se o pouso ocorrer atravessando um loop, inclui os pontos do arco.
+   * Direção ortogonal inicial (0=cima,1=baixo,2=esq,3=dir) e índice do alvo no trace.
+   * Só em capturas. Usados por `getMovePath` para reconstruir a animação — a engine
+   * não carrega pontos de animação.
    */
-  hopPoints: { x: number; y: number }[];
-
-  /** Índice no array hopPoints onde a peça capturada se encontra (para sincronizar o efeito de impacto) */
-  captureIndexInHop?: number;
+  dir?: number;
+  targetIndex?: number;
 }
 
 export interface SurakartaState {
   board: SurakartaPiece[][];
-  turn: 1 | -1;
-  winner: 1 | -1 | 0 | null;
+  turn: SurakartaPlayer;
+  winner: SurakartaPlayer | 0 | null;
+  endReason: SurakartaEndReason | null;
   history: string[];
   pliesWithoutCapture: number;
 }

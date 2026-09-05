@@ -1,125 +1,144 @@
-import { SurakartaState, SurakartaMove } from '@/types/surakarta';
-import { generateLegalMoves, applyMove } from '../engine/surakarta';
+import type { SurakartaState, SurakartaMove, SurakartaPlayer } from '@/types/surakarta';
+import { toFlat, generateMovesFlat, countMobility, DRAW_PLIES } from '../engine/surakarta';
 
-function evaluateBoard(state: SurakartaState, maximizingPlayer: 1 | -1): number {
-  if (state.winner === maximizingPlayer) return 10000;
-  if (state.winner === (maximizingPlayer === 1 ? -1 : 1)) return -10000;
-  if (state.winner === 0) return 0;
+const WIN = 10000;
 
-  let score = 0;
-  const board = state.board;
-
-  // Material and position
-  for (let y = 0; y < 6; y++) {
-    for (let x = 0; x < 6; x++) {
-      const piece = board[y][x];
-      if (piece === 0) continue;
-
-      const pieceValue = piece === maximizingPlayer ? 100 : -100;
-      score += pieceValue;
-
-      // Centrality bonus (0.5 to 2 points)
-      const cx = x === 2 || x === 3 ? 2 : (x === 1 || x === 4 ? 1 : 0);
-      const cy = y === 2 || y === 3 ? 2 : (y === 1 || y === 4 ? 1 : 0);
-      const centerBonus = (cx + cy);
-      score += piece === maximizingPlayer ? centerBonus : -centerBonus;
-    }
-  }
-
-  // Mobility & Threat
-  // We don't do full threat analysis because it's too expensive, but mobility is a proxy
-  const myMoves = generateLegalMoves({ ...state, turn: maximizingPlayer });
-  const enemyMoves = generateLegalMoves({ ...state, turn: maximizingPlayer === 1 ? -1 : 1 });
-
-  // A capture move is highly valuable
-  const myCaptures = myMoves.filter(m => m.isCapture).length;
-  const enemyCaptures = enemyMoves.filter(m => m.isCapture).length;
-
-  score += (myMoves.length * 1) + (myCaptures * 10);
-  score -= (enemyMoves.length * 1) + (enemyCaptures * 10);
-
-  return score;
+/** Bônus de centralidade por casa (0–4), pré-computado. */
+const CENTER = new Int8Array(36);
+for (let i = 0; i < 36; i++) {
+  const x = i % 6, y = (i / 6) | 0;
+  const cx = x === 2 || x === 3 ? 2 : x === 1 || x === 4 ? 1 : 0;
+  const cy = y === 2 || y === 3 ? 2 : y === 1 || y === 4 ? 1 : 0;
+  CENTER[i] = cx + cy;
 }
 
-export function getBestMoveSurakarta(
-  state: SurakartaState,
-  depth: number
-): SurakartaMove | null {
-  const maximizingPlayer = state.turn;
-
-  // For the root, we want to collect moves and sort them for better alpha-beta pruning
-  const legalMoves = generateLegalMoves(state);
-  if (legalMoves.length === 0) return null;
-
-  // Sort captures first
-  legalMoves.sort((a, b) => (b.isCapture ? 1 : 0) - (a.isCapture ? 1 : 0));
-
-  let bestMove: SurakartaMove | null = null;
-  let maxEval = -Infinity;
-  let alpha = -Infinity;
-  const beta = Infinity;
-
-  // Add some randomness if there are multiple "best" moves
-  const bestMoves: SurakartaMove[] = [];
-
-  for (const move of legalMoves) {
-    const nextState = applyMove(state, move);
-    const ev = minimax(nextState, depth - 1, alpha, beta, false, maximizingPlayer);
-
-    if (ev > maxEval) {
-      maxEval = ev;
-      bestMoves.length = 0;
-      bestMoves.push(move);
-    } else if (ev === maxEval) {
-      bestMoves.push(move);
-    }
-
-    alpha = Math.max(alpha, ev);
-  }
-
-  if (bestMoves.length > 0) {
-    // Pick a random move among the equally best ones
-    return bestMoves[Math.floor(Math.random() * bestMoves.length)];
-  }
-
-  return bestMove;
+interface Counts {
+  p1: number;
+  p2: number;
 }
 
-function minimax(
-  state: SurakartaState,
+const idx = (x: number, y: number) => y * 6 + x;
+
+function make(board: Int8Array, m: SurakartaMove, turn: SurakartaPlayer, c: Counts) {
+  if (m.isCapture) {
+    board[idx(m.capturedX!, m.capturedY!)] = 0;
+    if (turn === 1) c.p2--; else c.p1--;
+  }
+  board[idx(m.toX, m.toY)] = turn;
+  board[idx(m.fromX, m.fromY)] = 0;
+}
+
+function unmake(board: Int8Array, m: SurakartaMove, turn: SurakartaPlayer, c: Counts) {
+  board[idx(m.fromX, m.fromY)] = turn;
+  board[idx(m.toX, m.toY)] = 0;
+  if (m.isCapture) {
+    board[idx(m.capturedX!, m.capturedY!)] = -turn as SurakartaPlayer;
+    if (turn === 1) c.p2++; else c.p1++;
+  }
+}
+
+/** Capturas primeiro, in-place, sem comparador. */
+function orderMoves(moves: SurakartaMove[]) {
+  let j = 0;
+  for (let i = 0; i < moves.length; i++) {
+    if (moves[i].isCapture) {
+      const t = moves[i]; moves[i] = moves[j]; moves[j] = t;
+      j++;
+    }
+  }
+}
+
+/** Avaliação estática do ponto de vista de `turn`. Sempre inteira. */
+function evaluate(board: Int8Array, turn: SurakartaPlayer): number {
+  let s = 0;
+  for (let i = 0; i < 36; i++) {
+    const p = board[i];
+    if (p === 0) continue;
+    const v = 100 + CENTER[i];
+    s += p === turn ? v : -v;
+  }
+  const my = countMobility(board, turn);
+  const en = countMobility(board, -turn as SurakartaPlayer);
+  return s + my.n + my.caps * 10 - en.n - en.caps * 10;
+}
+
+function negamax(
+  board: Int8Array,
+  turn: SurakartaPlayer,
   depth: number,
   alpha: number,
   beta: number,
-  isMaximizing: boolean,
-  maximizingPlayer: 1 | -1
+  ply: number,
+  pliesNoCapture: number,
+  c: Counts,
 ): number {
-  if (depth === 0 || state.winner !== null) {
-    return evaluateBoard(state, maximizingPlayer);
+  const mine = turn === 1 ? c.p1 : c.p2;
+  const theirs = turn === 1 ? c.p2 : c.p1;
+  if (mine === 0) return -(WIN - ply);
+  if (theirs === 0) return WIN - ply;
+  if (pliesNoCapture >= DRAW_PLIES) return 0;
+  if (depth === 0) return evaluate(board, turn);
+
+  const moves = generateMovesFlat(board, turn);
+  if (moves.length === 0) return -(WIN - ply);
+  orderMoves(moves);
+
+  const opp = -turn as SurakartaPlayer;
+  let best = -Infinity;
+
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
+    make(board, m, turn, c);
+    const v = -negamax(board, opp, depth - 1, -beta, -alpha, ply + 1, m.isCapture ? 0 : pliesNoCapture + 1, c);
+    unmake(board, m, turn, c);
+
+    if (v > best) best = v;
+    if (v > alpha) alpha = v;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+
+export function getBestMoveSurakarta(state: SurakartaState, depth: number): SurakartaMove | null {
+  const board = toFlat(state.board);
+  const me = state.turn;
+  const opp = -me as SurakartaPlayer;
+
+  const moves = generateMovesFlat(board, me);
+  if (moves.length === 0) return null;
+  orderMoves(moves);
+
+  const c: Counts = { p1: 0, p2: 0 };
+  for (let i = 0; i < 36; i++) {
+    if (board[i] === 1) c.p1++;
+    else if (board[i] === -1) c.p2++;
   }
 
-  const legalMoves = generateLegalMoves(state);
-  // Sort captures first for alpha-beta efficiency
-  legalMoves.sort((a, b) => (b.isCapture ? 1 : 0) - (a.isCapture ? 1 : 0));
+  let best = -Infinity;
+  const ties: SurakartaMove[] = [];
 
-  if (isMaximizing) {
-    let maxEval = -Infinity;
-    for (const move of legalMoves) {
-      const nextState = applyMove(state, move);
-      const ev = minimax(nextState, depth - 1, alpha, beta, false, maximizingPlayer);
-      maxEval = Math.max(maxEval, ev);
-      alpha = Math.max(alpha, ev);
-      if (beta <= alpha) break; // Prune
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
+    const plies = m.isCapture ? 0 : state.pliesWithoutCapture + 1;
+
+    make(board, m, me, c);
+    let v = -negamax(board, opp, depth - 1, -Infinity, -best, 1, plies, c);
+
+    // Com alpha-beta, v === best pode ser apenas um limite superior. Re-busca com
+    // janela aberta em 1 para obter o valor exato antes de tratar como empate.
+    if (v === best && best !== -Infinity) {
+      v = -negamax(board, opp, depth - 1, -Infinity, -best + 1, 1, plies, c);
     }
-    return maxEval;
-  } else {
-    let minEval = Infinity;
-    for (const move of legalMoves) {
-      const nextState = applyMove(state, move);
-      const ev = minimax(nextState, depth - 1, alpha, beta, true, maximizingPlayer);
-      minEval = Math.min(minEval, ev);
-      beta = Math.min(beta, ev);
-      if (beta <= alpha) break; // Prune
+    unmake(board, m, me, c);
+
+    if (v > best) {
+      best = v;
+      ties.length = 0;
+      ties.push(m);
+    } else if (v === best) {
+      ties.push(m);
     }
-    return minEval;
   }
+
+  return ties[Math.floor(Math.random() * ties.length)] ?? null;
 }
