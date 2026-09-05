@@ -13,8 +13,8 @@ export interface SurakartaWorkerOutput {
   error?: string;
 }
 
-/** difficulty 1..4 → depth 2..5 */
-const depthFor = (difficulty: number) => Math.max(1, difficulty + 1);
+/** difficulty 1..3 → depth 2..4, difficulty 4 (impossível) → depth 7 */
+const depthFor = (difficulty: number) => (difficulty === 4 ? 7 : Math.max(1, Math.min(difficulty + 1, 4)));
 
 self.onmessage = (e: MessageEvent<SurakartaWorkerInput>) => {
   const { id, state, difficulty } = e.data;
